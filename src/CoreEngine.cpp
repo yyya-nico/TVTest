@@ -763,7 +763,25 @@ bool CCoreEngine::GetCurrentEventInfo(LibISDB::EventInfo *pInfo, uint16_t Servic
 	if (ServiceIndex < 0)
 		return false;
 
-	return m_pAnalyzer->GetEventInfo(ServiceIndex, pInfo, true, fNext);
+	if (m_pAnalyzer->GetEventInfo(ServiceIndex, pInfo, true, fNext))
+		return true;
+
+	// partial TS では EIT[p/f] が欠落しているため、EPG DB に同一サービスの時刻一致イベントがあれば補完する
+	if (m_pEPGDatabase != nullptr) {
+		const uint16_t NetworkID = m_pAnalyzer->GetNetworkID();
+		const uint16_t TransportStreamID = m_pAnalyzer->GetTransportStreamID();
+		if ((NetworkID != LibISDB::NETWORK_ID_INVALID)
+				&& (TransportStreamID != LibISDB::TRANSPORT_STREAM_ID_INVALID)) {
+			LibISDB::DateTime Time;
+			if (LibISDB::GetCurrentEPGTime(&Time)) {
+				if (fNext)
+					return m_pEPGDatabase->GetNextEventInfo(NetworkID, TransportStreamID, ServiceID, Time, pInfo);
+				return m_pEPGDatabase->GetEventInfo(NetworkID, TransportStreamID, ServiceID, Time, pInfo);
+			}
+		}
+	}
+
+	return false;
 }
 
 

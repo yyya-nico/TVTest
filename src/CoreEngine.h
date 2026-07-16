@@ -26,6 +26,7 @@
 #include "LibISDB/LibISDB/Filters/TSPacketParserFilter.hpp"
 #include "LibISDB/LibISDB/Filters/TeeFilter.hpp"
 #include "LibISDB/LibISDB/Filters/EPGDatabaseFilter.hpp"
+#include "LibISDB/LibISDB/EPG/EPGDatabase.hpp"
 #include "LibISDB/LibISDB/Filters/LogoDownloaderFilter.hpp"
 #include "LibISDB/LibISDB/Filters/GrabberFilter.hpp"
 #include "LibISDB/LibISDB/Filters/RecorderFilter.hpp"
@@ -195,6 +196,7 @@ namespace TVTest
 		int GetPacketBufferUsedPercentage() const;
 		bool GetCurrentEventInfo(LibISDB::EventInfo *pInfo, uint16_t ServiceID = LibISDB::SERVICE_ID_INVALID, bool fNext = false);
 		bool GetCurrentEventInfo(LibISDB::EventInfo *pInfo, bool fNext) { return GetCurrentEventInfo(pInfo, LibISDB::SERVICE_ID_INVALID, fNext); }
+		void SetEPGDatabase(LibISDB::EPGDatabase *pEPGDatabase) { m_pEPGDatabase = pEPGDatabase; }
 		LibISDB::COMMemoryPointer<> GetCurrentImage();
 		bool SetMinTimerResolution(bool fMin);
 		bool SetNoEpg(bool fNoEpg) { m_fNoEpg = fNoEpg; return true; }
@@ -258,6 +260,7 @@ namespace TVTest
 		int m_PacketBufferFillPercentage = 0;
 		UINT m_TimerResolution = 0;
 		bool m_fNoEpg = false;
+		LibISDB::EPGDatabase *m_pEPGDatabase = nullptr;
 
 		std::atomic<std::underlying_type_t<StatusFlag>> m_AsyncStatusUpdatedFlags{0};
 

@@ -894,6 +894,7 @@ int CAppMain::Main(HINSTANCE hInstance, LPCTSTR pszCmdLine, int nCmdShow)
 	LibISDB::EPGDatabaseFilter *pEPGDatabaseFilter = CoreEngine.GetFilter<LibISDB::EPGDatabaseFilter>();
 	if (pEPGDatabaseFilter != nullptr)
 		pEPGDatabaseFilter->SetEPGDatabase(&EPGDatabase);
+	CoreEngine.SetEPGDatabase(&EPGDatabase);
 
 	if (nCmdShow == SW_SHOWMINIMIZED || nCmdShow == SW_SHOWMINNOACTIVE || nCmdShow == SW_MINIMIZE)
 		CmdLineOptions.m_fMinimize = true;
