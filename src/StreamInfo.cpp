@@ -166,6 +166,57 @@ static void FormatEsInfo(
 		Es.ComponentTag);
 }
 
+static LPCTSTR GetDigitalRecordingControlText(uint8_t Data, uint8_t CopyControlType)
+{
+	switch (Data) {
+	case 0: return TEXT("制約条件なしにコピー可");
+	case 1:
+		if (CopyControlType == 1)
+			return TEXT("コピー禁止");
+		if (CopyControlType == 3)
+			return TEXT("未使用");
+		return TEXT("事業者定義");
+	case 2: return TEXT("1世代のみコピー可");
+	case 3: return TEXT("コピー禁止");
+	default: return TEXT("不明");
+	}
+}
+
+static LPCTSTR GetCopyControlTypeText(uint8_t Type)
+{
+	switch (Type) {
+	case 0: return TEXT("未定義");
+	case 1: return TEXT("シリアルインタフェースへ暗号化して出力");
+	case 2: return TEXT("未定義");
+	case 3: return TEXT("シリアルインタフェースへ暗号化せず出力");
+	default: return TEXT("不明");
+	}
+}
+
+static LPCTSTR GetAPSControlText(uint8_t Data, uint8_t CopyControlType)
+{
+	if ((CopyControlType != 1) && (CopyControlType != 3))
+		return TEXT("適用なし");
+
+	switch (Data) {
+	case 0: return TEXT("制約条件なしにアナログコピー可");
+	case 1: return TEXT("擬似シンクパルス付加");
+	case 2: return TEXT("擬似シンクパルス + 2ライン反転カラーストライプ付加");
+	case 3: return TEXT("擬似シンクパルス + 4ライン反転カラーストライプ付加");
+	default: return TEXT("不明");
+	}
+}
+
+static LPCTSTR GetRetentionStateText(uint8_t State)
+{
+	static const LPCTSTR TextList[] = {
+		TEXT("制限なし"), TEXT("1週間"), TEXT("2日"), TEXT("1日"),
+		TEXT("12時間"), TEXT("6時間"), TEXT("3時間"), TEXT("1時間30分")
+	};
+
+	return State < lengthof(TextList) ? TextList[State] : TEXT("不明");
+}
+
 void CStreamInfoPage::SetService()
 {
 	const LibISDB::AnalyzerFilter *pAnalyzer =
@@ -304,6 +355,117 @@ void CStreamInfoPage::SetService()
 					TEXT("ECM{0} : PID {1:#04x} ({1}) / CA system ID {2:#02x}"),
 					j + 1, PID, ServiceInfo.ECMList[j].CASystemID);
 				TreeView_InsertItem(hwndTree, &tvis);
+			}
+
+			LibISDB::AnalyzerFilter::CopyControlInfo CopyControlInfo;
+			if (pAnalyzer->GetCopyControlInfoByID(ServiceInfo.ServiceID, &CopyControlInfo)) {
+				using DescriptorSource = LibISDB::AnalyzerFilter::CopyControlInfo::DescriptorSource;
+				auto GetDescriptorSourceText = [](DescriptorSource Source) -> LPCTSTR {
+					switch (Source) {
+					case DescriptorSource::PMT: return TEXT("PMT");
+					case DescriptorSource::SIT: return TEXT("SIT");
+					default: return TEXT("?");
+					}
+				};
+
+				tvis.item.cChildren = 1;
+				tvis.item.pszText = const_cast<LPTSTR>(TEXT("コピー制御情報"));
+				const HTREEITEM hCopyControlItem = TreeView_InsertItem(hwndTree, &tvis);
+				tvis.item.cChildren = 0;
+
+				if (CopyControlInfo.DigitalCopyControlSource != DescriptorSource::None) {
+					StringFormat(
+						szText, TEXT("デジタルコピー制御記述子 ({})"),
+						GetDescriptorSourceText(CopyControlInfo.DigitalCopyControlSource));
+					tvis.hParent = hCopyControlItem;
+					tvis.item.cChildren = 1;
+					tvis.item.pszText = szText;
+					const HTREEITEM hDigitalCopyControlItem = TreeView_InsertItem(hwndTree, &tvis);
+					tvis.hParent = hDigitalCopyControlItem;
+					tvis.item.cChildren = 0;
+
+					StringFormat(
+						szText, TEXT("デジタルコピー制御情報 (digital_recording_control_data) : {} ({})"),
+						GetDigitalRecordingControlText(
+							CopyControlInfo.DigitalRecordingControlData, CopyControlInfo.CopyControlType),
+						CopyControlInfo.DigitalRecordingControlData);
+					TreeView_InsertItem(hwndTree, &tvis);
+					StringFormat(
+						szText, TEXT("最大ビットレートフラグ (maximum_bitrate_flag) : {} ({})"),
+						CopyControlInfo.MaximumBitRateFlag ? TEXT("最大ビットレートあり") : TEXT("最大ビットレートなし"),
+						CopyControlInfo.MaximumBitRateFlag ? 1 : 0);
+					TreeView_InsertItem(hwndTree, &tvis);
+					StringFormat(
+						szText, TEXT("コンポーネント制御フラグ (component_control_flag) : {} ({})"),
+						CopyControlInfo.ComponentControlFlag ? TEXT("コンポーネント別制御あり") : TEXT("コンポーネント別制御なし"),
+						CopyControlInfo.ComponentControlFlag ? 1 : 0);
+					TreeView_InsertItem(hwndTree, &tvis);
+					StringFormat(
+						szText, TEXT("コピー制御形式 (copy_control_type) : {} ({})"),
+						GetCopyControlTypeText(CopyControlInfo.CopyControlType), CopyControlInfo.CopyControlType);
+					TreeView_InsertItem(hwndTree, &tvis);
+					StringFormat(
+						szText, TEXT("アナログ出力コピー制御情報 (APS_control_data) : {} ({})"),
+						GetAPSControlText(CopyControlInfo.APSControlData, CopyControlInfo.CopyControlType),
+						CopyControlInfo.APSControlData);
+					TreeView_InsertItem(hwndTree, &tvis);
+					StringFormat(
+						szText, TEXT("最大ビットレート (maximum_bitrate) : {}"),
+						CopyControlInfo.MaximumBitRate);
+					TreeView_InsertItem(hwndTree, &tvis);
+
+					for (size_t j = 0; j < CopyControlInfo.ComponentControlList.size(); j++) {
+						const LibISDB::DigitalCopyControlDescriptor::ComponentControlInfo &Component =
+							CopyControlInfo.ComponentControlList[j];
+						StringFormat(
+							szText,
+							TEXT("コンポーネント{} : コンポーネントタグ (component_tag) {:#02x} / デジタルコピー制御情報 (digital_recording_control_data) {} ({}) / 最大ビットレートフラグ (maximum_bitrate_flag) {} ({}) / コピー制御形式 (copy_control_type) {} ({}) / アナログ出力コピー制御情報 (APS_control_data) {} ({}) / 最大ビットレート (maximum_bitrate) {}"),
+							j + 1, Component.ComponentTag, GetDigitalRecordingControlText(Component.DigitalRecordingControlData, Component.CopyControlType),
+							Component.DigitalRecordingControlData,
+							Component.MaximumBitRateFlag ? TEXT("あり") : TEXT("なし"),
+							Component.MaximumBitRateFlag ? 1 : 0,
+							GetCopyControlTypeText(Component.CopyControlType), Component.CopyControlType,
+							GetAPSControlText(Component.APSControlData, Component.CopyControlType),
+							Component.APSControlData, Component.MaximumBitRate);
+						TreeView_InsertItem(hwndTree, &tvis);
+					}
+				}
+
+				if (CopyControlInfo.ContentAvailabilitySource != DescriptorSource::None) {
+					StringFormat(
+						szText, TEXT("コンテント利用記述子 ({})"),
+						GetDescriptorSourceText(CopyControlInfo.ContentAvailabilitySource));
+					tvis.hParent = hCopyControlItem;
+					tvis.item.cChildren = 1;
+					tvis.item.pszText = szText;
+					const HTREEITEM hContentAvailabilityItem = TreeView_InsertItem(hwndTree, &tvis);
+					tvis.hParent = hContentAvailabilityItem;
+					tvis.item.cChildren = 0;
+
+					StringFormat(
+						szText, TEXT("コピー制限モード (copy_restriction_mode) : {} (コピー回数制限モード{} / 事業者運用)"),
+						CopyControlInfo.CopyRestrictionMode ? 1 : 0, CopyControlInfo.CopyRestrictionMode ? 1 : 0);
+					TreeView_InsertItem(hwndTree, &tvis);
+					StringFormat(
+						szText, TEXT("映像制約トークン (image_constraint_token) : {} ({})"),
+						CopyControlInfo.ImageConstraintToken ? TEXT("映像出力の解像度制限不要") : TEXT("映像出力の解像度制限が必要"),
+						CopyControlInfo.ImageConstraintToken ? 1 : 0);
+					TreeView_InsertItem(hwndTree, &tvis);
+					StringFormat(
+						szText, TEXT("一時蓄積モード (retention_mode) : {} ({})"),
+						CopyControlInfo.RetentionMode ? TEXT("一時蓄積不可") : TEXT("一時蓄積可"),
+						CopyControlInfo.RetentionMode ? 1 : 0);
+					TreeView_InsertItem(hwndTree, &tvis);
+					StringFormat(
+						szText, TEXT("一時蓄積状態 (retention_state) : 一時蓄積許容時間 {} ({})"),
+						GetRetentionStateText(CopyControlInfo.RetentionState), CopyControlInfo.RetentionState);
+					TreeView_InsertItem(hwndTree, &tvis);
+					StringFormat(
+						szText, TEXT("出力保護ビット (encryption_mode) : {} ({})"),
+						CopyControlInfo.EncryptionMode ? TEXT("高速デジタルインタフェース出力の保護不要") : TEXT("高速デジタルインタフェース出力の保護が必要"),
+						CopyControlInfo.EncryptionMode ? 1 : 0);
+					TreeView_InsertItem(hwndTree, &tvis);
+				}
 			}
 		}
 	}
