@@ -3353,7 +3353,7 @@ LRESULT CPlugin::OnPluginMessage(WPARAM wParam, LPARAM lParam)
 			} else {
 				pChannelInfo->szNetworkName[0] = '\0';
 			}
-			if (!pAnalyzer->GetTSName(&Name)) {
+			if (pAnalyzer->GetTSName(&Name)) {
 				StringCopy(pChannelInfo->szTransportStreamName, Name.c_str());
 			} else {
 				pChannelInfo->szTransportStreamName[0] = '\0';
