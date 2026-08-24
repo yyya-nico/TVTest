@@ -442,13 +442,15 @@ void CStreamInfoPage::SetService()
 
 				tvis.hParent = hCopyControlItem;
 				StringFormat(
-					szText, TEXT("実効コピー制御 : {}"),
+					szText, TEXT("実効コピー制御 : {}{}"),
 					GetEffectiveCopyControlText(
 						CopyControlInfo.DigitalRecordingControlData,
 						CopyControlInfo.CopyControlType,
 						fDigitalCopyControl,
 						fEffectiveCopyRestrictionMode,
-						fEffectiveEncryptionMode));
+						fEffectiveEncryptionMode),
+					fContentAvailability ?
+						TEXT("") : TEXT(" [推定: 記述子省略時の現行既定値]"));
 				tvis.item.pszText = szText;
 				TreeView_InsertItem(hwndTree, &tvis);
 
@@ -557,25 +559,25 @@ void CStreamInfoPage::SetService()
 				} else {
 					tvis.hParent = hCopyControlItem;
 					tvis.item.cChildren = 1;
-					tvis.item.pszText = const_cast<LPTSTR>(TEXT("コンテント利用記述子なし (運用上の既定値を適用)"));
+					tvis.item.pszText = const_cast<LPTSTR>(TEXT("コンテント利用記述子なし (現行運用の既定値を適用)"));
 					const HTREEITEM hContentAvailabilityItem = TreeView_InsertItem(hwndTree, &tvis);
 					tvis.hParent = hContentAvailabilityItem;
 					tvis.item.cChildren = 0;
 
 					StringFormat(
-						szText, TEXT("コピー制限モード (copy_restriction_mode) : {} (既定値 1)"),
+						szText, TEXT("コピー制限モード (copy_restriction_mode) : {} (現行既定値 1)"),
 						GetCopyRestrictionModeText(
 							true, CopyControlInfo.DigitalRecordingControlData));
 					tvis.item.pszText = szText;
 					TreeView_InsertItem(hwndTree, &tvis);
-					StringCopy(szText, TEXT("映像制約トークン (image_constraint_token) : 映像出力の解像度制限不要 (既定値 1)"));
+					StringCopy(szText, TEXT("映像制約トークン (image_constraint_token) : 映像出力の解像度制限不要 (現行既定値 1)"));
 					TreeView_InsertItem(hwndTree, &tvis);
-					StringCopy(szText, TEXT("一時蓄積モード (retention_mode) : 一時蓄積可 (既定値 0)"));
+					StringCopy(szText, TEXT("一時蓄積モード (retention_mode) : 一時蓄積可 (現行既定値 0)"));
 					TreeView_InsertItem(hwndTree, &tvis);
-					StringCopy(szText, TEXT("一時蓄積状態 (retention_state) : 一時蓄積許容時間 1時間30分 (既定値 7)"));
+					StringCopy(szText, TEXT("一時蓄積状態 (retention_state) : 一時蓄積許容時間 1時間30分 (現行既定値 7)"));
 					TreeView_InsertItem(hwndTree, &tvis);
 					StringFormat(
-						szText, TEXT("出力保護ビット (encryption_mode) : {} (既定値 1)"),
+						szText, TEXT("出力保護ビット (encryption_mode) : {} (現行既定値 1)"),
 						GetEncryptionModeText(
 							true,
 							CopyControlInfo.DigitalRecordingControlData,
