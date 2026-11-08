@@ -45,11 +45,7 @@ public:
 	{
 	}
 
-	bool Show(HWND hwndOwner) override
-	{
-		return ShowDialog(
-			hwndOwner, GetAppClass().GetResourceInstance(), MAKEINTRESOURCE(IDD_INITIALSETTINGS)) == IDOK;
-	}
+	bool Show(HWND hwndOwner) override;
 
 private:
 	enum class Page {
@@ -59,6 +55,8 @@ private:
 	};
 
 	static constexpr UINT_PTR TIMER_ID_WINSCARD_FILES = 1;
+	static inline thread_local CSetupWizard *m_pActiveWizard = nullptr;
+	static LRESULT CALLBACK MessageFilter(int Code, WPARAM wParam, LPARAM lParam);
 
 	CDriverManager &m_DriverManager;
 	Page m_Page = Page::Welcome;
@@ -78,6 +76,52 @@ private:
 	void ResizeBrowser();
 	void ImportFiles();
 };
+
+
+bool CSetupWizard::Show(HWND hwndOwner)
+{
+	// OLE is required by the Shell view's native drag-and-drop and clipboard support.
+	const HRESULT OleResult = ::OleInitialize(nullptr);
+	CSetupWizard *pPreviousWizard = m_pActiveWizard;
+	m_pActiveWizard = this;
+
+	const HHOOK hHook = ::SetWindowsHookEx(WH_MSGFILTER, MessageFilter, nullptr, ::GetCurrentThreadId());
+	const int Result = ShowDialog(
+		hwndOwner, GetAppClass().GetResourceInstance(), MAKEINTRESOURCE(IDD_INITIALSETTINGS));
+	if (hHook != nullptr)
+		::UnhookWindowsHookEx(hHook);
+	m_pActiveWizard = pPreviousWizard;
+
+	if (SUCCEEDED(OleResult))
+		::OleUninitialize();
+	return Result == IDOK;
+}
+
+
+LRESULT CALLBACK CSetupWizard::MessageFilter(int Code, WPARAM wParam, LPARAM lParam)
+{
+	if (Code == MSGF_DIALOGBOX && m_pActiveWizard != nullptr) {
+		MSG *pMsg = reinterpret_cast<MSG *>(lParam);
+		const CSetupWizard &Wizard = *m_pActiveWizard;
+		const HWND hwndHost = ::GetDlgItem(Wizard.m_hDlg, IDC_SETUP_BROWSER);
+		if (pMsg->message >= WM_KEYFIRST && pMsg->message <= WM_KEYLAST
+				&& hwndHost != nullptr && ::IsChild(hwndHost, pMsg->hwnd) && Wizard.m_Browser) {
+			// Give the focused Shell view first refusal before the modal dialog handles the key.
+			LibISDB::COMPointer<IInputObject> Input;
+			if (SUCCEEDED(Wizard.m_Browser.QueryInterface(&Input))) {
+				if (Input->TranslateAcceleratorIO(pMsg) == S_OK)
+					return TRUE;
+			} else {
+				LibISDB::COMPointer<IShellView> View;
+				if (SUCCEEDED(Wizard.m_Browser->GetCurrentView(IID_PPV_ARGS(View.GetPP())))
+						&& View->TranslateAccelerator(pMsg) == S_OK)
+					return TRUE;
+			}
+		}
+	}
+
+	return ::CallNextHookEx(nullptr, Code, wParam, lParam);
+}
 
 
 INT_PTR CSetupWizard::DlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
