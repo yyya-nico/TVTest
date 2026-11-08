@@ -58,6 +58,8 @@ private:
 		WinSCard,
 	};
 
+	static constexpr UINT_PTR TIMER_ID_WINSCARD_FILES = 1;
+
 	CDriverManager &m_DriverManager;
 	Page m_Page = Page::Welcome;
 	TCHAR m_szDestination[MAX_PATH] = {};
@@ -67,6 +69,7 @@ private:
 	INT_PTR DlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam) override;
 	void RealizeStyle() override;
 	void ShowPage(Page NewPage);
+	void UpdateWinSCardButton();
 	void Next();
 	void Finish();
 	bool FindBonDrivers();
@@ -96,6 +99,13 @@ INT_PTR CSetupWizard::DlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
 		ResizeBrowser();
 		break;
 
+	case WM_TIMER:
+		if (wParam == TIMER_ID_WINSCARD_FILES) {
+			UpdateWinSCardButton();
+			return TRUE;
+		}
+		break;
+
 	case WM_COMMAND:
 		switch (LOWORD(wParam)) {
 		case IDOK:
@@ -110,10 +120,6 @@ INT_PTR CSetupWizard::DlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
 			ImportFiles();
 			return TRUE;
 
-		case IDC_SETUP_SKIP:
-			Finish();
-			return TRUE;
-
 		case IDCANCEL:
 			::EndDialog(hDlg, IDCANCEL);
 			return TRUE;
@@ -121,6 +127,7 @@ INT_PTR CSetupWizard::DlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
 		break;
 
 	case WM_DESTROY:
+		::KillTimer(hDlg, TIMER_ID_WINSCARD_FILES);
 		CloseBrowser();
 		break;
 	}
@@ -163,6 +170,7 @@ void CSetupWizard::ShowPage(Page NewPage)
 		return;
 	}
 
+	::KillTimer(m_hDlg, TIMER_ID_WINSCARD_FILES);
 	CloseBrowser();
 	m_Page = NewPage;
 	StringCopy(m_szDestination, fHaveFolder ? szPath : TEXT(""));
@@ -170,8 +178,6 @@ void CSetupWizard::ShowPage(Page NewPage)
 	::ShowWindow(hwndHost, fHaveFolder ? SW_SHOW : SW_HIDE);
 	::ShowWindow(::GetDlgItem(m_hDlg, IDC_SETUP_BACK), fImport ? SW_SHOW : SW_HIDE);
 	::ShowWindow(::GetDlgItem(m_hDlg, IDC_SETUP_IMPORT), fHaveFolder ? SW_SHOW : SW_HIDE);
-	::ShowWindow(::GetDlgItem(m_hDlg, IDC_SETUP_SKIP), fOptional ? SW_SHOW : SW_HIDE);
-	::EnableWindow(::GetDlgItem(m_hDlg, IDOK), !fImport || fHaveFolder);
 
 	::SetDlgItemText(m_hDlg, IDC_SETUP_BACK,
 		fOptional ? TEXT("← BonDriver に戻る") : TEXT("← はじめに戻る"));
@@ -182,9 +188,13 @@ void CSetupWizard::ShowPage(Page NewPage)
 		!fImport ? TEXT("視聴に使う BonDriver をセットアップします。必要に応じて WinSCard 互換 DLL も追加できます。") :
 		fOptional ? TEXT("WinSCard 互換 DLL と関連ファイルを選択してください。使わない場合はスキップできます。") :
 		TEXT("お使いになる BonDriver DLL と関連ファイルを選択してください。選んだファイルは右のフォルダーにコピーされます。"));
-	::SetDlgItemText(m_hDlg, IDOK,
-		!fImport ? TEXT("セットアップを始める  →") :
-		fOptional ? TEXT("完了") : TEXT("次へ  →"));
+	if (fOptional) {
+		UpdateWinSCardButton();
+		if (fHaveFolder)
+			::SetTimer(m_hDlg, TIMER_ID_WINSCARD_FILES, 500, nullptr);
+	} else {
+		::SetDlgItemText(m_hDlg, IDOK, fImport ? TEXT("次へ  →") : TEXT("セットアップを始める  →"));
+	}
 	::SetDlgItemText(m_hDlg, IDC_SETUP_DESTINATION, m_szDestination);
 	::SetDlgItemText(m_hDlg, IDC_SETUP_STATUS, TEXT(""));
 
@@ -194,8 +204,37 @@ void CSetupWizard::ShowPage(Page NewPage)
 		::SetDlgItemText(m_hDlg, IDC_SETUP_STATUS, TEXT("WinSCard フォルダーを作成できませんでした。"));
 	}
 
-	::SetFocus(::GetDlgItem(m_hDlg,
-		fHaveFolder ? IDC_SETUP_IMPORT : fOptional ? IDC_SETUP_SKIP : IDOK));
+	::SetFocus(::GetDlgItem(m_hDlg, fHaveFolder ? IDC_SETUP_IMPORT : IDOK));
+}
+
+
+void CSetupWizard::UpdateWinSCardButton()
+{
+	if (m_Page != Page::WinSCard)
+		return;
+
+	bool fHasFiles = false;
+	TCHAR szPattern[MAX_PATH];
+	if (m_szDestination[0] != TEXT('\0') && ::PathCombine(szPattern, m_szDestination, TEXT("*"))) {
+		WIN32_FIND_DATA Data;
+		const HANDLE hFind = ::FindFirstFileEx(
+			szPattern, FindExInfoBasic, &Data, FindExSearchNameMatch, nullptr, 0);
+		if (hFind != INVALID_HANDLE_VALUE) {
+			do {
+				if ((Data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+					fHasFiles = true;
+					break;
+				}
+			} while (::FindNextFile(hFind, &Data));
+			::FindClose(hFind);
+		}
+	}
+
+	const LPCTSTR pszLabel = fHasFiles ? TEXT("完了") : TEXT("スキップして完了");
+	TCHAR szLabel[32];
+	::GetDlgItemText(m_hDlg, IDOK, szLabel, lengthof(szLabel));
+	if (::lstrcmp(szLabel, pszLabel) != 0)
+		::SetDlgItemText(m_hDlg, IDOK, pszLabel);
 }
 
 
@@ -340,6 +379,7 @@ void CSetupWizard::ImportFiles()
 			View->Refresh();
 	}
 
+	UpdateWinSCardButton();
 	::SetDlgItemText(m_hDlg, IDC_SETUP_STATUS,
 		fAborted ? TEXT("コピーが中断されました。一覧でコピー済みのファイルを確認してください。") :
 		FAILED(Result) ? TEXT("インポートを完了できませんでした。コピー先とファイルを確認してください。") :
