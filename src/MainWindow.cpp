@@ -3889,14 +3889,16 @@ void CMainWindow::StartChannelDisplayTimer()
 }
 
 
-void CMainWindow::OnChannelDisplayMouseMove(HWND hwnd, POINT ScreenPos)
+void CMainWindow::OnChannelDisplayInput(HWND hwnd, const POINT *pMousePos)
 {
-	if (!m_App.ChannelDisplay.GetVisible() || m_ChannelDisplayCursorPos == ScreenPos)
+	if (!m_App.ChannelDisplay.GetVisible()
+			|| (pMousePos != nullptr && m_ChannelDisplayCursorPos == *pMousePos))
 		return;
 
 	const HWND hwndHost = GetVideoHostWindow();
 	if (hwndHost != nullptr && (hwnd == hwndHost || ::IsChild(hwndHost, hwnd))) {
-		m_ChannelDisplayCursorPos = ScreenPos;
+		if (pMousePos != nullptr)
+			m_ChannelDisplayCursorPos = *pMousePos;
 		m_ChannelDisplayLastActivity = ::GetTickCount();
 	}
 }

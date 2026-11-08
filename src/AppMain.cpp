@@ -1239,7 +1239,9 @@ int CAppMain::Main(HINSTANCE hInstance, LPCTSTR pszCmdLine, int nCmdShow)
 
 	while (::GetMessage(&msg, nullptr, 0, 0) > 0) {
 		if (msg.message == WM_MOUSEMOVE || msg.message == WM_NCMOUSEMOVE)
-			MainWindow.OnChannelDisplayMouseMove(msg.hwnd, msg.pt);
+			MainWindow.OnChannelDisplayInput(msg.hwnd, &msg.pt);
+		else if (msg.message == WM_KEYDOWN || msg.message == WM_SYSKEYDOWN)
+			MainWindow.OnChannelDisplayInput(msg.hwnd);
 
 		if (HtmlHelpClass.PreTranslateMessage(&msg)
 				|| UICore.ProcessDialogMessage(&msg))

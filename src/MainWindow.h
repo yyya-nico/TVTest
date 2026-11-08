@@ -119,7 +119,7 @@ namespace TVTest
 		void SetStatusBarVisible(bool fVisible);
 		void ShowChannelStatus(const CChannelInfo &Channel);
 		void ClearChannelStatus();
-		void OnChannelDisplayMouseMove(HWND hwnd, POINT ScreenPos);
+		void OnChannelDisplayInput(HWND hwnd, const POINT *pMousePos = nullptr);
 		bool GetStatusBarVisible() const { return m_fShowStatusBar; }
 		bool ShowStatusBarItem(int ID, bool fShow);
 		void OnStatusBarInitialized();
