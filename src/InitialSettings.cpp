@@ -22,89 +22,328 @@
 #include "TVTest.h"
 #include "AppMain.h"
 #include "InitialSettings.h"
+#include "Dialog.h"
+#include "DarkMode.h"
+#include "LibISDB/LibISDB/Windows/Utilities/COMUtilities.hpp"
+#include "resource.h"
+#include <shobjidl.h>
 
 namespace TVTest
 {
 
-
 namespace
 {
 
-constexpr int OpenFolderButton = 100;
-constexpr int SkipButton = 101;
+constexpr LPCTSTR SetupCaption = APP_NAME TEXT(" セットアップ");
 
-bool PrepareFolder(LPCTSTR pszName, LPTSTR pszPath)
+class CSetupWizard final
+	: public CResizableDialog
 {
-	if (GetAppClass().GetAppDirectory(pszPath) && ::PathAppend(pszPath, pszName)) {
-		if (::CreateDirectory(pszPath, nullptr) || ::PathIsDirectory(pszPath))
+public:
+	explicit CSetupWizard(CDriverManager &DriverManager)
+		: m_DriverManager(DriverManager)
+	{
+	}
+
+	bool Show(HWND hwndOwner) override
+	{
+		return ShowDialog(
+			hwndOwner, GetAppClass().GetResourceInstance(), MAKEINTRESOURCE(IDD_INITIALSETTINGS)) == IDOK;
+	}
+
+private:
+	enum class Page {
+		Welcome,
+		BonDriver,
+		WinSCard,
+	};
+
+	CDriverManager &m_DriverManager;
+	Page m_Page = Page::Welcome;
+	TCHAR m_szDestination[MAX_PATH] = {};
+	LibISDB::COMPointer<IExplorerBrowser> m_Browser;
+	DrawUtil::CFont m_TitleFont;
+
+	INT_PTR DlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam) override;
+	void RealizeStyle() override;
+	void ShowPage(Page NewPage);
+	void Next();
+	void Finish();
+	bool FindBonDrivers();
+	bool OpenBrowser(HWND hwndHost);
+	void CloseBrowser();
+	void ResizeBrowser();
+	void ImportFiles();
+};
+
+
+INT_PTR CSetupWizard::DlgProc(HWND hDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
+{
+	switch (Msg) {
+	case WM_INITDIALOG:
+		AddControls({
+			{IDC_SETUP_BROWSER, AlignFlag::All},
+			{IDC_SETUP_DESTINATION, AlignFlag::Horz},
+			{IDC_SETUP_IMPORT, AlignFlag::Bottom},
+			{IDC_SETUP_STATUS, AlignFlag::HorzBottom},
+			{IDCANCEL, AlignFlag::BottomRight},
+		});
+		RealizeStyle();
+		ShowPage(Page::Welcome);
+		return FALSE;
+
+	case WM_SIZE:
+		ResizeBrowser();
+		break;
+
+	case WM_COMMAND:
+		switch (LOWORD(wParam)) {
+		case IDOK:
+			Next();
+			return TRUE;
+
+		case IDC_SETUP_BACK:
+			ShowPage(m_Page == Page::WinSCard ? Page::BonDriver : Page::Welcome);
+			return TRUE;
+
+		case IDC_SETUP_IMPORT:
+			ImportFiles();
+			return TRUE;
+
+		case IDC_SETUP_SKIP:
+			Finish();
+			return TRUE;
+
+		case IDCANCEL:
+			::EndDialog(hDlg, IDCANCEL);
+			return TRUE;
+		}
+		break;
+
+	case WM_DESTROY:
+		CloseBrowser();
+		break;
+	}
+
+	return FALSE;
+}
+
+
+void CSetupWizard::RealizeStyle()
+{
+	CResizableDialog::RealizeStyle();
+
+	if (m_hDlg != nullptr) {
+		LOGFONT lf;
+		if (m_Font.GetLogFont(&lf)) {
+			lf.lfHeight = ::MulDiv(lf.lfHeight, 22, 10);
+			lf.lfWeight = FW_BOLD;
+			m_TitleFont.Create(&lf);
+			::SendDlgItemMessage(
+				m_hDlg, IDC_SETUP_TITLE, WM_SETFONT,
+				reinterpret_cast<WPARAM>(m_TitleFont.GetHandle()), TRUE);
+		}
+		ResizeBrowser();
+	}
+}
+
+
+void CSetupWizard::ShowPage(Page NewPage)
+{
+	const bool fImport = NewPage != Page::Welcome;
+	const bool fOptional = NewPage == Page::WinSCard;
+	const LPCTSTR pszFolder = fOptional ? TEXT("WinSCard") : TEXT("BonDriver");
+
+	TCHAR szPath[MAX_PATH] = {};
+	const bool fHaveFolder = fImport && GetAppClass().GetAppDirectory(szPath)
+		&& ::PathAppend(szPath, pszFolder)
+		&& (::CreateDirectory(szPath, nullptr) || ::PathIsDirectory(szPath));
+	if (NewPage == Page::BonDriver && !fHaveFolder) {
+		::MessageBox(m_hDlg, TEXT("BonDriver フォルダーを作成できませんでした。"), SetupCaption, MB_OK | MB_ICONERROR);
+		return;
+	}
+
+	CloseBrowser();
+	m_Page = NewPage;
+	StringCopy(m_szDestination, fHaveFolder ? szPath : TEXT(""));
+	const HWND hwndHost = ::GetDlgItem(m_hDlg, IDC_SETUP_BROWSER);
+	::ShowWindow(hwndHost, fHaveFolder ? SW_SHOW : SW_HIDE);
+	::ShowWindow(::GetDlgItem(m_hDlg, IDC_SETUP_BACK), fImport ? SW_SHOW : SW_HIDE);
+	::ShowWindow(::GetDlgItem(m_hDlg, IDC_SETUP_IMPORT), fHaveFolder ? SW_SHOW : SW_HIDE);
+	::ShowWindow(::GetDlgItem(m_hDlg, IDC_SETUP_SKIP), fOptional ? SW_SHOW : SW_HIDE);
+	::EnableWindow(::GetDlgItem(m_hDlg, IDOK), !fImport || fHaveFolder);
+
+	::SetDlgItemText(m_hDlg, IDC_SETUP_BACK,
+		fOptional ? TEXT("← BonDriver に戻る") : TEXT("← はじめに戻る"));
+	::SetDlgItemText(m_hDlg, IDC_SETUP_TITLE,
+		!fImport ? TEXT("視聴をはじめる") :
+		fOptional ? TEXT("WinSCard をインポート") : TEXT("BonDriver をインポート"));
+	::SetDlgItemText(m_hDlg, IDC_SETUP_DESCRIPTION,
+		!fImport ? TEXT("視聴に使う BonDriver をセットアップします。必要に応じて WinSCard 互換 DLL も追加できます。") :
+		fOptional ? TEXT("WinSCard 互換 DLL と関連ファイルを選択してください。使わない場合はスキップできます。") :
+		TEXT("お使いになる BonDriver DLL と関連ファイルを選択してください。選んだファイルは右のフォルダーにコピーされます。"));
+	::SetDlgItemText(m_hDlg, IDOK,
+		!fImport ? TEXT("セットアップを始める  →") :
+		fOptional ? TEXT("完了") : TEXT("次へ  →"));
+	::SetDlgItemText(m_hDlg, IDC_SETUP_DESTINATION, m_szDestination);
+	::SetDlgItemText(m_hDlg, IDC_SETUP_STATUS, TEXT(""));
+
+	if (fHaveFolder && !OpenBrowser(hwndHost)) {
+		::SetDlgItemText(m_hDlg, IDC_SETUP_STATUS, TEXT("一覧を開けませんでした。ファイルのインポートはできます。"));
+	} else if (fOptional && !fHaveFolder) {
+		::SetDlgItemText(m_hDlg, IDC_SETUP_STATUS, TEXT("WinSCard フォルダーを作成できませんでした。"));
+	}
+
+	::SetFocus(::GetDlgItem(m_hDlg,
+		fHaveFolder ? IDC_SETUP_IMPORT : fOptional ? IDC_SETUP_SKIP : IDOK));
+}
+
+
+bool CSetupWizard::FindBonDrivers()
+{
+	TCHAR szPath[MAX_PATH];
+	if (GetAppClass().GetAppDirectory(szPath) && ::PathAppend(szPath, TEXT("BonDriver"))) {
+		m_DriverManager.Find(szPath);
+		if (m_DriverManager.GetDriverInfo(0) != nullptr)
 			return true;
 	}
 
 	::MessageBox(
-		nullptr, TEXT("TVTest.exe と同じ場所にフォルダーを作成できませんでした。"),
-		APP_NAME TEXT(" セットアップ"), MB_OK | MB_ICONERROR);
+		m_hDlg, TEXT("BonDriver フォルダーに BonDriver*.dll を追加してください。"),
+		SetupCaption, MB_OK | MB_ICONINFORMATION);
 	return false;
 }
 
-void OpenFolder(HWND hwndOwner, LPCTSTR pszPath)
+
+void CSetupWizard::Next()
 {
-	if (reinterpret_cast<INT_PTR>(
-			::ShellExecute(hwndOwner, TEXT("open"), pszPath, nullptr, nullptr, SW_SHOWNORMAL)) <= 32) {
-		::MessageBox(hwndOwner, pszPath, TEXT("フォルダーを開けませんでした"), MB_OK | MB_ICONERROR);
+	switch (m_Page) {
+	case Page::Welcome:
+		ShowPage(Page::BonDriver);
+		break;
+
+	case Page::BonDriver:
+		if (FindBonDrivers())
+			ShowPage(Page::WinSCard);
+		break;
+
+	case Page::WinSCard:
+		Finish();
+		break;
 	}
 }
 
-bool ShowFolderStep(
-	HWND hwndOwner, LPCTSTR pszPath, LPCTSTR pszTitle, LPCTSTR pszInstructions,
-	CDriverManager *pDriverManager)
+
+void CSetupWizard::Finish()
 {
-	const TASKDIALOG_BUTTON Buttons[] = {
-		{IDOK, pDriverManager != nullptr ? TEXT("次へ") : TEXT("完了")},
-		{OpenFolderButton, TEXT("フォルダーを開く")},
-		{SkipButton, TEXT("スキップ")},
-	};
-	TASKDIALOGCONFIG Dialog = {};
-	Dialog.cbSize = sizeof(Dialog);
-	Dialog.hwndParent = hwndOwner;
-	Dialog.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION;
-	Dialog.dwCommonButtons = TDCBF_CANCEL_BUTTON;
-	Dialog.pszWindowTitle = APP_NAME TEXT(" セットアップ");
-	Dialog.pszMainInstruction = pszTitle;
-	const String Content = String(pszInstructions) + TEXT("\n\n") + pszPath;
-	Dialog.pszContent = Content.c_str();
-	Dialog.cButtons = pDriverManager != nullptr ? 2 : 3;
-	Dialog.pButtons = Buttons;
-	Dialog.nDefaultButton = IDOK;
+	if (FindBonDrivers())
+		::EndDialog(m_hDlg, IDOK);
+	else
+		ShowPage(Page::BonDriver);
+}
 
-	OpenFolder(hwndOwner, pszPath);
-	for (;;) {
-		int Button;
-		if (FAILED(::TaskDialogIndirect(&Dialog, &Button, nullptr, nullptr)))
-			return false;
 
-		switch (Button) {
-		case OpenFolderButton:
-			OpenFolder(hwndOwner, pszPath);
-			break;
+bool CSetupWizard::OpenBrowser(HWND hwndHost)
+{
+	LibISDB::COMPointer<IShellItem> Folder;
+	if (FAILED(::SHCreateItemFromParsingName(m_szDestination, nullptr, IID_PPV_ARGS(Folder.GetPP())))
+			|| FAILED(::CoCreateInstance(
+				__uuidof(ExplorerBrowser), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(m_Browser.GetPP()))))
+		return false;
 
-		case IDOK:
-			if (pDriverManager == nullptr)
-				return true;
-			pDriverManager->Find(pszPath);
-			if (pDriverManager->GetDriverInfo(0) != nullptr)
-				return true;
-			::MessageBox(
-				hwndOwner, TEXT("BonDriver フォルダーに BonDriver*.dll を入れてください。"),
-				APP_NAME TEXT(" セットアップ"), MB_OK | MB_ICONINFORMATION);
-			break;
+	if (IsDarkMode())
+		SetWindowAllowDarkMode(hwndHost, true);
 
-		case SkipButton:
-			return true;
-
-		default:
-			return false;
-		}
+	RECT rc;
+	::GetClientRect(hwndHost, &rc);
+	FOLDERSETTINGS Settings = {FVM_DETAILS, FWF_NOCLIENTEDGE | FWF_NOGROUPING};
+	if (FAILED(m_Browser->Initialize(hwndHost, &rc, &Settings))) {
+		m_Browser.Release();
+		return false;
 	}
+
+	m_Browser->SetOptions(EBO_NAVIGATEONCE | EBO_NOTRAVELLOG | EBO_NOPERSISTVIEWSTATE);
+	m_Browser->SetEmptyText(TEXT("「ファイルを選択」からファイルを追加できます。"));
+	if (FAILED(m_Browser->BrowseToObject(Folder.Get(), SBSP_ABSOLUTE))) {
+		CloseBrowser();
+		return false;
+	}
+
+	return true;
+}
+
+
+void CSetupWizard::CloseBrowser()
+{
+	if (m_Browser) {
+		m_Browser->Destroy();
+		m_Browser.Release();
+	}
+}
+
+
+void CSetupWizard::ResizeBrowser()
+{
+	if (m_Browser) {
+		RECT rc;
+		::GetClientRect(::GetDlgItem(m_hDlg, IDC_SETUP_BROWSER), &rc);
+		m_Browser->SetRect(nullptr, rc);
+	}
+}
+
+
+void CSetupWizard::ImportFiles()
+{
+	LibISDB::COMPointer<IFileOpenDialog> Picker;
+	FILEOPENDIALOGOPTIONS Options;
+	HRESULT Result = ::CoCreateInstance(
+		__uuidof(::FileOpenDialog), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(Picker.GetPP()));
+	if (SUCCEEDED(Result))
+		Result = Picker->GetOptions(&Options);
+	if (SUCCEEDED(Result))
+		Result = Picker->SetOptions(Options | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST | FOS_ALLOWMULTISELECT);
+	if (SUCCEEDED(Result)) {
+		const COMDLG_FILTERSPEC Filter = {TEXT("すべてのファイル"), TEXT("*.*")};
+		Picker->SetFileTypes(1, &Filter);
+		Picker->SetTitle(TEXT("インポートするファイルを選択"));
+		Picker->SetOkButtonLabel(TEXT("コピー"));
+		Result = Picker->Show(m_hDlg);
+	}
+	if (Result == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+		return;
+
+	LibISDB::COMPointer<IShellItemArray> Files;
+	LibISDB::COMPointer<IShellItem> Folder;
+	LibISDB::COMPointer<IFileOperation> Copy;
+	if (SUCCEEDED(Result))
+		Result = Picker->GetResults(Files.GetPP());
+	if (SUCCEEDED(Result))
+		Result = ::SHCreateItemFromParsingName(m_szDestination, nullptr, IID_PPV_ARGS(Folder.GetPP()));
+	if (SUCCEEDED(Result)) {
+		Result = ::CoCreateInstance(
+			__uuidof(FileOperation), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(Copy.GetPP()));
+	}
+	if (SUCCEEDED(Result))
+		Result = Copy->SetOwnerWindow(m_hDlg);
+	if (SUCCEEDED(Result))
+		Result = Copy->CopyItems(Files.Get(), Folder.Get());
+
+	BOOL fAborted = FALSE;
+	if (SUCCEEDED(Result)) {
+		Result = Copy->PerformOperations();
+		const HRESULT AbortResult = Copy->GetAnyOperationsAborted(&fAborted);
+		if (SUCCEEDED(Result))
+			Result = AbortResult;
+
+		LibISDB::COMPointer<IShellView> View;
+		if (m_Browser && SUCCEEDED(m_Browser->GetCurrentView(IID_PPV_ARGS(View.GetPP()))))
+			View->Refresh();
+	}
+
+	::SetDlgItemText(m_hDlg, IDC_SETUP_STATUS,
+		fAborted ? TEXT("コピーが中断されました。一覧でコピー済みのファイルを確認してください。") :
+		FAILED(Result) ? TEXT("インポートを完了できませんでした。コピー先とファイルを確認してください。") :
+		TEXT("ファイルをコピーしました。"));
 }
 
 } // namespace
@@ -112,21 +351,8 @@ bool ShowFolderStep(
 
 bool CInitialSettings::Show(HWND hwndOwner, CDriverManager &DriverManager)
 {
-	TCHAR szPath[MAX_PATH];
-
-	if (!PrepareFolder(TEXT("BonDriver"), szPath)
-			|| !ShowFolderStep(
-				hwndOwner, szPath, TEXT("1 / 2  BonDriver"),
-				TEXT("開いたフォルダーに、TVTest と同じビット数の BonDriver DLL を入れてから「次へ」を押してください。"),
-				&DriverManager))
-		return false;
-
-	return PrepareFolder(TEXT("WinSCard"), szPath)
-		&& ShowFolderStep(
-			hwndOwner, szPath, TEXT("2 / 2  WinSCard"),
-			TEXT("WinSCard 互換 DLL を使う場合は、開いたフォルダーに TVTest と同じビット数の DLL を入れてください。")
-			TEXT("\n使わない場合は「スキップ」を押してください。"),
-			nullptr);
+	CSetupWizard Wizard(DriverManager);
+	return Wizard.Show(hwndOwner);
 }
 
 } // namespace TVTest

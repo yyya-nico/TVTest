@@ -774,6 +774,24 @@ int CAppMain::Main(HINSTANCE hInstance, LPCTSTR pszCmdLine, int nCmdShow)
 	// Buffered paint の初期化
 	CBufferedPaint::Initialize();
 
+	// スタイル設定の読み込み
+	{
+		TCHAR szStyleFileName[MAX_PATH];
+		if (!CmdLineOptions.m_StyleFileName.empty()) {
+			GetAbsolutePath(CmdLineOptions.m_StyleFileName.c_str(), szStyleFileName);
+		} else {
+			::GetModuleFileName(nullptr, szStyleFileName, lengthof(szStyleFileName));
+			::PathRenameExtension(szStyleFileName, TEXT(".style.ini"));
+		}
+		if (::PathFileExists(szStyleFileName)) {
+			AddLog(TEXT("スタイル設定を \"{}\" から読み込みます..."), szStyleFileName);
+			StyleManager.Load(szStyleFileName);
+		}
+	}
+
+	if (StyleManager.IsUseDarkMenu())
+		SetAppAllowDarkMode(true);
+
 	m_fInitialSettings =
 		CmdLineOptions.m_fInitialSettings
 		|| (m_fFirstExecute && !Core.IsSilent() && !CmdLineOptions.m_fNoDriver
@@ -816,24 +834,6 @@ int CAppMain::Main(HINSTANCE hInstance, LPCTSTR pszCmdLine, int nCmdShow)
 		}
 	}
 	DriverOptions.Initialize(&DriverManager);
-
-	// スタイル設定の読み込み
-	{
-		TCHAR szStyleFileName[MAX_PATH];
-		if (!CmdLineOptions.m_StyleFileName.empty()) {
-			GetAbsolutePath(CmdLineOptions.m_StyleFileName.c_str(), szStyleFileName);
-		} else {
-			::GetModuleFileName(nullptr, szStyleFileName, lengthof(szStyleFileName));
-			::PathRenameExtension(szStyleFileName, TEXT(".style.ini"));
-		}
-		if (::PathFileExists(szStyleFileName)) {
-			AddLog(TEXT("スタイル設定を \"{}\" から読み込みます..."), szStyleFileName);
-			StyleManager.Load(szStyleFileName);
-		}
-	}
-
-	if (StyleManager.IsUseDarkMenu())
-		SetAppAllowDarkMode(true);
 
 	GraphicsCore.Initialize();
 

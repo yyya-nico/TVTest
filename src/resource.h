@@ -97,6 +97,7 @@
 #define IDM_EVENTSEARCHKEYWORD      30021
 
 #define IDD_ABOUT                   40
+#define IDD_INITIALSETTINGS         41
 #define IDD_OPTIONS                 42
 #define IDD_OPTIONS_GENERAL         43
 #define IDD_OPTIONS_VIEW            44
@@ -569,6 +570,15 @@
 #define IDC_ERROR_ICON    1000
 #define IDC_ERROR_MESSAGE 1001
 #define IDC_ERROR_COPY    1002
+
+#define IDC_SETUP_BACK                          1000
+#define IDC_SETUP_TITLE                         1002
+#define IDC_SETUP_DESCRIPTION                   1003
+#define IDC_SETUP_DESTINATION                   1004
+#define IDC_SETUP_BROWSER                       1005
+#define IDC_SETUP_IMPORT                        1006
+#define IDC_SETUP_SKIP                          1007
+#define IDC_SETUP_STATUS                        1008
 
 #define IDC_INITIALSETTINGS_DRIVER              1001
 
