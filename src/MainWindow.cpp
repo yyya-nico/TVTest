@@ -932,9 +932,21 @@ LRESULT CMainWindow::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 		break;
 
 	case WM_LBUTTONUP:
-		m_fDragMoveTrigger = false;
-		if (::GetCapture() == hwnd)
-			::ReleaseCapture();
+		{
+			const bool fClick = !m_fDragging && (m_fDragMoveTrigger
+				|| !m_App.OperationOptions.GetDisplayDragMove());
+			m_fDragMoveTrigger = false;
+			if (::GetCapture() == hwnd)
+				::ReleaseCapture();
+			if (fClick && !m_pCore->GetFullscreen()
+					&& (!m_Display.GetDisplayBase().IsVisible() || m_App.ChannelDisplay.GetVisible())) {
+				POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+				::ClientToScreen(hwnd, &pt);
+				RECT rc;
+				if (m_Display.GetViewWindow().GetScreenPosition(&rc) && ::PtInRect(&rc, pt))
+					SendCommand(CM_CHANNELDISPLAY);
+			}
+		}
 		return 0;
 
 	case WM_NCLBUTTONDOWN:
@@ -2140,7 +2152,8 @@ void CMainWindow::OnMouseMove(int x, int y)
 	if (m_fDragMoveTrigger) {
 		POINT pt = {x, y};
 		::ClientToScreen(m_hwnd, &pt);
-		if (pt != m_ptDragStartPos) {
+		if (std::abs(pt.x - m_ptDragStartPos.x) >= ::GetSystemMetrics(SM_CXDRAG)
+				|| std::abs(pt.y - m_ptDragStartPos.y) >= ::GetSystemMetrics(SM_CYDRAG)) {
 			m_fDragMoveTrigger = false;
 			m_fDragging = true;
 			::ReleaseCapture();
@@ -2437,6 +2450,7 @@ bool CMainWindow::HandleCommand(CCommandManager::InvokeParameters &Params)
 					m_App.ChannelManager.GetCurrentChannelInfo());
 			}
 			m_App.ChannelDisplay.Update();
+			ShowChannelDisplayStatus();
 		} else {
 			m_Display.GetDisplayBase().SetVisible(false);
 		}
@@ -2764,6 +2778,24 @@ void CMainWindow::OnTimer(HWND hwnd, UINT id)
 		// OSD を消す
 		m_App.OSDManager.ClearCompositedOSD();
 		m_Timer.EndTimer(TIMER_ID_OSD);
+		break;
+
+	case TIMER_ID_CHANNELDISPLAY:
+		if (m_Timer.IsTimerEnabled(TIMER_ID_CHANNELDISPLAY)) {
+			const DWORD IdleTime = TickTimeSpan(m_ChannelDisplayLastActivity, ::GetTickCount());
+			if (IdleTime < m_ChannelDisplayTimeout) {
+				m_Timer.BeginTimer(TIMER_ID_CHANNELDISPLAY, m_ChannelDisplayTimeout - IdleTime);
+				break;
+			}
+
+			const HWND hwndDisplay = m_App.ChannelDisplay.GetHandle();
+			const HWND hwndCapture = ::GetCapture();
+			if (hwndDisplay != nullptr && (hwndCapture == hwndDisplay || ::IsChild(hwndDisplay, hwndCapture))) {
+				m_Timer.BeginTimer(TIMER_ID_CHANNELDISPLAY, 100);
+			} else {
+				m_Display.GetDisplayBase().SetVisible(false);
+			}
+		}
 		break;
 
 	case TIMER_ID_WHEELCHANNELSELECT:
@@ -3843,11 +3875,63 @@ void CMainWindow::ShowChannelStatus(const CChannelInfo &Channel)
 			|| !m_App.OSDOptions.IsOSDEnabled(COSDOptions::OSDType::Channel))
 		return;
 
-	LibISDB::DateTime Time;
+	ShowChannelStatusForChannel(Channel, false);
+}
+
+
+void CMainWindow::StartChannelDisplayTimer()
+{
+	const int Duration = m_App.OSDOptions.GetFadeTime();
+	m_ChannelDisplayTimeout = Duration > 0 ? Duration : 3000;
+	::GetCursorPos(&m_ChannelDisplayCursorPos);
+	m_ChannelDisplayLastActivity = ::GetTickCount();
+	m_Timer.BeginTimer(TIMER_ID_CHANNELDISPLAY, m_ChannelDisplayTimeout);
+}
+
+
+void CMainWindow::OnChannelDisplayMouseMove(HWND hwnd, POINT ScreenPos)
+{
+	if (!m_App.ChannelDisplay.GetVisible() || m_ChannelDisplayCursorPos == ScreenPos)
+		return;
+
+	const HWND hwndHost = GetVideoHostWindow();
+	if (hwndHost != nullptr && (hwnd == hwndHost || ::IsChild(hwndHost, hwnd))) {
+		m_ChannelDisplayCursorPos = ScreenPos;
+		m_ChannelDisplayLastActivity = ::GetTickCount();
+	}
+}
+
+
+void CMainWindow::ShowChannelDisplayStatus()
+{
+	if (!m_App.OSDOptions.GetShowOSD())
+		return;
+
+	CChannelInfo Channel;
+	if (m_App.Core.GetCurrentStreamChannelInfo(&Channel, true) && !IsStringEmpty(Channel.GetName())) {
+		ShowChannelStatusForChannel(Channel, true);
+	} else if (const CChannelInfo *pChannel = m_App.ChannelManager.GetCurrentChannelInfo()) {
+		ShowChannelStatusForChannel(*pChannel, true);
+	} else {
+		ShowChannelStatusText(TEXT("チャンネルを選択"), nullptr, 0);
+	}
+}
+
+
+void CMainWindow::ShowChannelStatusForChannel(const CChannelInfo &Channel, bool fUseLiveEvent)
+{
 	LibISDB::EventInfo Event;
-	LibISDB::GetCurrentEPGTime(&Time);
-	const bool fHaveEvent = m_App.EPGDatabase.GetEventInfo(
-		Channel.GetNetworkID(), Channel.GetTransportStreamID(), Channel.GetServiceID(), Time, &Event);
+	bool fHaveEvent =
+		fUseLiveEvent && m_App.CoreEngine.GetCurrentEventInfo(&Event)
+		&& Event.NetworkID == Channel.GetNetworkID()
+		&& Event.TransportStreamID == Channel.GetTransportStreamID()
+		&& Event.ServiceID == Channel.GetServiceID() && !Event.EventName.empty();
+	if (!fHaveEvent) {
+		LibISDB::DateTime Time;
+		LibISDB::GetCurrentEPGTime(&Time);
+		fHaveEvent = m_App.EPGDatabase.GetEventInfo(
+			Channel.GetNetworkID(), Channel.GetTransportStreamID(), Channel.GetServiceID(), Time, &Event);
+	}
 	ShowChannelStatusText(
 		Channel.GetName(), fHaveEvent ? Event.EventName.c_str() : nullptr,
 		m_App.OSDOptions.GetFadeTime());
@@ -3862,7 +3946,10 @@ void CMainWindow::ShowChannelStatusText(LPCTSTR pszChannelName, LPCTSTR pszEvent
 		Text += pszEventName;
 	}
 	m_NotificationBar.SetFont(m_App.NotificationBarOptions.GetNotificationBarFont());
-	m_NotificationBar.Show(Text.c_str(), CNotificationBar::MessageType::Info, Duration, true, true);
+	// While the channel list is open, its timer also dismisses the channel status.
+	m_NotificationBar.Show(
+		Text.c_str(), CNotificationBar::MessageType::Info,
+		m_App.ChannelDisplay.GetVisible() ? 0 : Duration, true, true);
 }
 
 
@@ -6671,12 +6758,20 @@ bool CMainWindow::CDisplayBaseEventHandler::OnVisibleChange(bool fVisible)
 	if (!m_pMainWindow->IsViewerEnabled()) {
 		m_pMainWindow->m_Display.GetVideoContainer().SetVisible(fVisible);
 	}
+	const bool fChannelDisplay =
+		m_pMainWindow->m_Display.GetDisplayBase().GetDisplayView() == &m_pMainWindow->m_App.ChannelDisplay;
+	if (fChannelDisplay) {
+		if (fVisible) {
+			m_pMainWindow->StartChannelDisplayTimer();
+		} else {
+			m_pMainWindow->m_Timer.EndTimer(TIMER_ID_CHANNELDISPLAY);
+			m_pMainWindow->ClearChannelStatus();
+		}
+	}
 	if (m_pMainWindow->m_pCore->GetFullscreen()) {
 		if (fVisible)
 			m_pMainWindow->m_Fullscreen.HideAllBars();
-		m_pMainWindow->m_Fullscreen.ShowCloseButton(
-			fVisible && m_pMainWindow->m_Display.GetDisplayBase().GetDisplayView()
-				== &m_pMainWindow->m_App.ChannelDisplay);
+		m_pMainWindow->m_Fullscreen.ShowCloseButton(fVisible && fChannelDisplay);
 	}
 	return true;
 }

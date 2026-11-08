@@ -1238,6 +1238,9 @@ int CAppMain::Main(HINSTANCE hInstance, LPCTSTR pszCmdLine, int nCmdShow)
 	MSG msg;
 
 	while (::GetMessage(&msg, nullptr, 0, 0) > 0) {
+		if (msg.message == WM_MOUSEMOVE || msg.message == WM_NCMOUSEMOVE)
+			MainWindow.OnChannelDisplayMouseMove(msg.hwnd, msg.pt);
+
 		if (HtmlHelpClass.PreTranslateMessage(&msg)
 				|| UICore.ProcessDialogMessage(&msg))
 			continue;

@@ -119,6 +119,7 @@ namespace TVTest
 		void SetStatusBarVisible(bool fVisible);
 		void ShowChannelStatus(const CChannelInfo &Channel);
 		void ClearChannelStatus();
+		void OnChannelDisplayMouseMove(HWND hwnd, POINT ScreenPos);
 		bool GetStatusBarVisible() const { return m_fShowStatusBar; }
 		bool ShowStatusBarItem(int ID, bool fShow);
 		void OnStatusBarInitialized();
@@ -203,6 +204,7 @@ namespace TVTest
 		enum {
 			TIMER_ID_UPDATE              = 0x0001U,
 			TIMER_ID_OSD                 = 0x0002U,
+			TIMER_ID_CHANNELDISPLAY      = 0x0004U,
 			TIMER_ID_WHEELCHANNELSELECT  = 0x0008U,
 			TIMER_ID_PROGRAMLISTUPDATE   = 0x0010U,
 			TIMER_ID_PROGRAMGUIDEUPDATE  = 0x0020U,
@@ -514,7 +516,7 @@ namespace TVTest
 		bool m_fAllowDarkMode = false;
 		bool m_fDarkMode = false;
 		bool m_fShowStatusBar = false;
-		bool m_fShowTitleBar = true;
+		bool m_fShowTitleBar = false;
 		bool m_fCustomTitleBar = true;
 		bool m_fPopupTitleBar = true;
 		bool m_fSplitTitleBar = true;
@@ -571,6 +573,10 @@ namespace TVTest
 		bool m_fShowCursor = true;
 		bool m_fNoHideCursor = false;
 		CCursorTracker m_CursorTracker;
+
+		POINT m_ChannelDisplayCursorPos{};
+		DWORD m_ChannelDisplayLastActivity = 0;
+		DWORD m_ChannelDisplayTimeout = 0;
 
 		bool m_fDragMoveTrigger = false;
 		bool m_fCaptionLButtonDown = false;
@@ -708,6 +714,9 @@ namespace TVTest
 		void OnRecordingStateChanged();
 		void OnEventChanged();
 		void UpdateProgramStatus();
+		void StartChannelDisplayTimer();
+		void ShowChannelDisplayStatus();
+		void ShowChannelStatusForChannel(const CChannelInfo &Channel, bool fUseLiveEvent);
 		void ShowChannelStatusText(LPCTSTR pszChannelName, LPCTSTR pszEventName, DWORD Duration);
 		bool AutoFitWindowToVideo();
 		bool SetPanAndScan(int Command);

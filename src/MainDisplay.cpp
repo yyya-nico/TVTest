@@ -187,7 +187,7 @@ void CMainDisplay::CChannelDisplayEventHandler::OnTunerSelect(
 {
 	if (m_App.CoreEngine.IsTunerOpen()
 			&& IsEqualFileName(m_App.CoreEngine.GetDriverFileName(), pszDriverFileName)) {
-		m_App.UICore.DoCommand(CM_CHANNELDISPLAY);
+		m_pChannelDisplay->SetVisible(false);
 	} else {
 		if (!m_App.UICore.ConfirmChannelChange())
 			return;
@@ -202,7 +202,7 @@ void CMainDisplay::CChannelDisplayEventHandler::OnTunerSelect(
 				m_App.Core.RestoreChannel();
 			}
 		}
-		m_App.UICore.DoCommand(CM_CHANNELDISPLAY);
+		m_pChannelDisplay->SetVisible(false);
 	}
 }
 
@@ -213,6 +213,7 @@ void CMainDisplay::CChannelDisplayEventHandler::OnChannelSelect(
 	if (!m_App.UICore.ConfirmChannelChange())
 		return;
 
+	m_pChannelDisplay->SetVisible(false);
 	m_App.MainWindow.ShowChannelStatus(*pChannelInfo);
 	bool fTuned = false;
 	if (m_App.Core.OpenTuner(pszDriverFileName)) {
@@ -240,7 +241,6 @@ void CMainDisplay::CChannelDisplayEventHandler::OnChannelSelect(
 			if (Index >= 0)
 				fTuned = m_App.Core.SetChannel(Space, Index);
 		}
-		m_pChannelDisplay->SetVisible(false);
 	}
 	if (!fTuned)
 		m_App.MainWindow.ClearChannelStatus();
