@@ -55,6 +55,7 @@ namespace TVTest
 		DefaultDriverType GetDefaultDriverType() const;
 		LPCTSTR GetDefaultDriverName() const;
 		bool SetDefaultDriverName(LPCTSTR pszDriverName);
+		void SetDriverDirectory(LPCTSTR pszDirectory);
 		bool GetFirstDriverName(String *pDriverName) const;
 		bool GetResident() const;
 		bool GetKeepSingleTask() const;

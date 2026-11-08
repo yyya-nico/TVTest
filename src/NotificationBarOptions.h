@@ -45,14 +45,12 @@ namespace TVTest
 		bool ReadSettings(CSettings &Settings) override;
 		bool WriteSettings(CSettings &Settings) override;
 
-	// CBasicDialog
-		bool Create(HWND hwndOwner) override;
-
 	// CNotificationBarOptions
-		bool IsNotificationBarEnabled() const { return m_fEnableNotificationBar; }
 		int GetNotificationBarDuration() const { return m_NotificationBarDuration; }
 		const Style::Font &GetNotificationBarFont() const { return m_NotificationBarFont; }
 		bool IsNotifyEnabled(unsigned int Type) const;
+
+		friend class COSDOptions;
 
 	private:
 	// CBasicDialog
@@ -60,7 +58,6 @@ namespace TVTest
 
 		void EnableNotify(unsigned int Type, bool fEnabled);
 
-		bool m_fEnableNotificationBar = true;
 		int m_NotificationBarDuration = 3000;
 		unsigned int m_NotificationBarFlags = NOTIFY_EVENTNAME | NOTIFY_TSPROCESSORERROR;
 		Style::Font m_NotificationBarFont;

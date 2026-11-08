@@ -142,93 +142,6 @@ void COSDManager::HideOSD()
 }
 
 
-bool COSDManager::ShowChannelOSD(const CChannelInfo *pInfo, LPCTSTR pszText, bool fChanging)
-{
-	if (m_pEventHandler == nullptr || pInfo == nullptr)
-		return false;
-
-	CAppMain &App = GetAppClass();
-	const CCoreEngine &CoreEngine = App.CoreEngine;
-	const LibISDB::ViewerFilter *pViewer = CoreEngine.GetFilter<LibISDB::ViewerFilter>();
-
-	if (pViewer == nullptr)
-		return false;
-
-	OSDClientInfo ClientInfo;
-	ClientInfo.fForcePseudoOSD = false;
-	ClientInfo.fAnimation = m_Style.fChannelAnimation && !fChanging;
-	if (!m_pEventHandler->GetOSDClientInfo(&ClientInfo))
-		return false;
-	if (!m_Style.fChannelAnimation || m_OSD.IsVisible())
-		ClientInfo.fAnimation = false;
-
-	const COSDOptions::ChannelChangeType ChangeType = m_pOptions->GetChannelChangeType();
-
-	HBITMAP hbmLogo = nullptr;
-	CPseudoOSD::ImageEffect ImageEffect = CPseudoOSD::ImageEffect::None;
-	if (ChangeType != COSDOptions::ChannelChangeType::TextOnly) {
-		hbmLogo = App.LogoManager.GetAssociatedLogoBitmap(
-			pInfo->GetNetworkID(), pInfo->GetServiceID(), CLogoManager::LOGOTYPE_BIG);
-		if (hbmLogo != nullptr) {
-			if (fChanging)
-				ImageEffect = CPseudoOSD::ImageEffect::Dark;
-			else if (StringUtility::IsEqualNoCase(m_Style.LogoEffect, TEXT("gloss")))
-				ImageEffect = CPseudoOSD::ImageEffect::Gloss;
-		}
-
-		if (ChangeType == COSDOptions::ChannelChangeType::LogoOnly && hbmLogo != nullptr) {
-			m_OSD.Create(ClientInfo.hwndParent, m_pOptions->GetLayeredWindow());
-			m_OSD.SetImage(hbmLogo, ImageEffect);
-			m_OSD.SetPosition(
-				ClientInfo.ClientRect.left + m_Style.Margin.Left,
-				ClientInfo.ClientRect.top + m_Style.Margin.Top,
-				m_Style.LogoSize.Width, m_Style.LogoSize.Height);
-			m_OSD.Show(m_pOptions->GetFadeTime(), ClientInfo.fAnimation);
-			return true;
-		}
-	}
-
-	if (!m_pOptions->GetPseudoOSD() && !ClientInfo.fForcePseudoOSD
-			&& pViewer->IsDrawTextSupported()) {
-		if (hbmLogo != nullptr) {
-			m_OSD.Create(ClientInfo.hwndParent, m_pOptions->GetLayeredWindow());
-			m_OSD.SetImage(hbmLogo, ImageEffect);
-			m_OSD.SetPosition(
-				ClientInfo.ClientRect.left + m_Style.Margin.Left,
-				ClientInfo.ClientRect.top + m_Style.Margin.Top,
-				m_Style.LogoSize.Width, m_Style.LogoSize.Height);
-			m_OSD.Show(m_pOptions->GetFadeTime(), ClientInfo.fAnimation);
-		}
-
-		if (ChangeType != COSDOptions::ChannelChangeType::LogoOnly && !IsStringEmpty(pszText)) {
-			CompositeText(
-				pszText,
-				ClientInfo.ClientRect,
-				hbmLogo != nullptr ? static_cast<int>(m_Style.LogoSize.Width) : 0,
-				m_pOptions->GetFadeTime());
-		}
-	} else {
-		m_OSD.SetText(pszText, hbmLogo, m_Style.LogoSize.Width, m_Style.LogoSize.Height, ImageEffect);
-		CreateTextOSD(pszText, ClientInfo, m_Style.LogoSize.Width, m_Style.LogoSize.Height);
-		COLORREF cr;
-		if (fChanging)
-			cr = MixColor(m_pOptions->GetTextColor(), RGB(0, 0, 0), 160);
-		else
-			cr = m_pOptions->GetTextColor();
-		m_OSD.SetTextColor(cr);
-		m_OSD.Show(m_pOptions->GetFadeTime(), ClientInfo.fAnimation);
-	}
-
-	return true;
-}
-
-
-void COSDManager::HideChannelOSD()
-{
-	m_OSD.Hide();
-}
-
-
 bool COSDManager::ShowVolumeOSD(int Volume)
 {
 	if (m_pEventHandler == nullptr)
@@ -574,9 +487,6 @@ void COSDManager::OSDStyle::SetStyle(const Style::CStyleManager *pStyleManager)
 		CompositeTextSizeRatio = Value;
 	pStyleManager->Get(TEXT("osd.composite-text-size-min"), &CompositeTextSizeMin);
 	pStyleManager->Get(TEXT("osd.composite-text-size-max"), &CompositeTextSizeMax);
-	pStyleManager->Get(TEXT("channel-osd.logo"), &LogoSize);
-	pStyleManager->Get(TEXT("channel-osd.logo.effect"), &LogoEffect);
-	pStyleManager->Get(TEXT("channel-osd.animation"), &fChannelAnimation);
 	pStyleManager->Get(TEXT("volume-osd.margin"), &VolumeMargin);
 	pStyleManager->Get(TEXT("volume-osd.text-size-min"), &VolumeTextSizeMin);
 	pStyleManager->Get(TEXT("volume-osd.text-size-max"), &VolumeTextSizeMax);
@@ -596,7 +506,6 @@ void COSDManager::OSDStyle::NormalizeStyle(
 	pStyleScaling->ToPixels(&CompositeTextSizeMin);
 	pStyleScaling->ToPixels(&CompositeTextSizeMax);
 	pStyleScaling->ToPixels(&Margin);
-	pStyleScaling->ToPixels(&LogoSize);
 	pStyleScaling->ToPixels(&VolumeMargin);
 	pStyleScaling->ToPixels(&VolumeTextSizeMin);
 	pStyleScaling->ToPixels(&VolumeTextSizeMax);

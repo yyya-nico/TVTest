@@ -37,7 +37,7 @@ bool COptionDialog::m_fInitialized = false;
 COptionDialog::PageInfo COptionDialog::m_PageList[NUM_PAGES] = {
 	{TEXT("一般"),               nullptr, HELP_ID_OPTIONS_GENERAL},
 	{TEXT("表示"),               nullptr, HELP_ID_OPTIONS_VIEW},
-	{TEXT("OSD"),                nullptr, HELP_ID_OPTIONS_OSD},
+	{TEXT("状態表示"),                nullptr, HELP_ID_OPTIONS_OSD},
 	{TEXT("通知バー"),           nullptr, HELP_ID_OPTIONS_NOTIFICATIONBAR},
 	{TEXT("ステータスバー"),     nullptr, HELP_ID_OPTIONS_STATUSBAR},
 	{TEXT("サイドバー"),         nullptr, HELP_ID_OPTIONS_SIDEBAR},
@@ -62,6 +62,25 @@ COptionDialog::PageInfo COptionDialog::m_PageList[NUM_PAGES] = {
 };
 
 
+static bool IsVisibleOptionPage(int Page)
+{
+	return Page != COptionDialog::PAGE_NOTIFICATIONBAR
+		&& Page != COptionDialog::PAGE_STATUS
+		&& Page != COptionDialog::PAGE_SIDEBAR;
+}
+
+
+static int GetOptionListIndex(int Page)
+{
+	int Index = 0;
+	for (int i = 0; i < Page; i++) {
+		if (IsVisibleOptionPage(i))
+			Index++;
+	}
+	return Index;
+}
+
+
 COptionDialog::~COptionDialog()
 {
 	Destroy();
@@ -81,7 +100,7 @@ bool COptionDialog::Show(HWND hwndOwner, int StartPage)
 	COptions::SetFrame(this);
 	for (int i = 0; i < NUM_PAGES; i++)
 		m_PageList[i].pOptions->SetStyleScaling(m_pStyleScaling);
-	m_StartPage = StartPage;
+	m_StartPage = IsVisibleOptionPage(StartPage) ? StartPage : PAGE_OSD;
 	if (ShowDialog(hwndOwner, GetAppClass().GetResourceInstance(), MAKEINTRESOURCE(IDD_OPTIONS)) != IDOK) {
 		return false;
 	}
@@ -99,7 +118,7 @@ bool COptionDialog::Show(HWND hwndOwner, int StartPage)
 
 bool COptionDialog::SetCurrentPage(int Page)
 {
-	if (Page < 0 || Page >= NUM_PAGES)
+	if (Page < 0 || Page >= NUM_PAGES || !IsVisibleOptionPage(Page))
 		return false;
 	if (Page != m_CurrentPage) {
 		if (m_hDlg != nullptr) {
@@ -161,7 +180,7 @@ void COptionDialog::CreatePage(int Page)
 
 void COptionDialog::SetPage(int Page)
 {
-	if (Page >= 0 && Page < NUM_PAGES && m_CurrentPage != Page) {
+	if (Page >= 0 && Page < NUM_PAGES && IsVisibleOptionPage(Page) && m_CurrentPage != Page) {
 		if (!m_PageList[Page].pOptions->IsCreated()) {
 			Util::CWaitCursor WaitCursor;
 			CreatePage(Page);
@@ -170,7 +189,7 @@ void COptionDialog::SetPage(int Page)
 		SetPagePos(Page);
 		m_PageList[Page].pOptions->SetVisible(true);
 		m_CurrentPage = Page;
-		DlgListBox_SetCurSel(m_hDlg, IDC_OPTIONS_LIST, Page);
+		DlgListBox_SetCurSel(m_hDlg, IDC_OPTIONS_LIST, GetOptionListIndex(Page));
 		InvalidateDlgItem(m_hDlg, IDC_OPTIONS_TITLE);
 	}
 }
@@ -204,13 +223,14 @@ INT_PTR COptionDialog::DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lPara
 
 			for (int i = 0; i < NUM_PAGES; i++) {
 				m_PageList[i].pOptions->ClearUpdateFlags();
-				DlgListBox_AddItem(hDlg, IDC_OPTIONS_LIST, i);
+				if (IsVisibleOptionPage(i))
+					DlgListBox_AddItem(hDlg, IDC_OPTIONS_LIST, i);
 			}
 			if (m_StartPage >= 0 && m_StartPage < NUM_PAGES)
 				m_CurrentPage = m_StartPage;
 			CreatePage(m_CurrentPage);
 			m_PageList[m_CurrentPage].pOptions->SetVisible(true);
-			DlgListBox_SetCurSel(hDlg, IDC_OPTIONS_LIST, m_CurrentPage);
+			DlgListBox_SetCurSel(hDlg, IDC_OPTIONS_LIST, GetOptionListIndex(m_CurrentPage));
 
 			AddControls({
 				{IDC_OPTIONS_LIST,      AlignFlag::Vert},
@@ -327,10 +347,9 @@ INT_PTR COptionDialog::DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lPara
 		switch (LOWORD(wParam)) {
 		case IDC_OPTIONS_LIST:
 			if (HIWORD(wParam) == LBN_SELCHANGE) {
-				const int NewPage = static_cast<int>(DlgListBox_GetCurSel(hDlg, IDC_OPTIONS_LIST));
-
-				if (NewPage >= 0)
-					SetPage(NewPage);
+				const int Index = static_cast<int>(DlgListBox_GetCurSel(hDlg, IDC_OPTIONS_LIST));
+				if (Index >= 0)
+					SetPage(static_cast<int>(::SendDlgItemMessage(hDlg, IDC_OPTIONS_LIST, LB_GETITEMDATA, Index, 0)));
 			}
 			return TRUE;
 

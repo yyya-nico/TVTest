@@ -113,7 +113,6 @@ COSDOptions::~COSDOptions()
 
 bool COSDOptions::ReadSettings(CSettings &Settings)
 {
-	int Value;
 
 	Settings.Read(TEXT("UseOSD"), &m_fShowOSD);
 	Settings.Read(TEXT("PseudoOSD"), &m_fPseudoOSD);
@@ -133,10 +132,6 @@ bool COSDOptions::ReadSettings(CSettings &Settings)
 		else
 			m_EnabledOSD = EnabledOSD;
 	}
-	if (Settings.Read(TEXT("ChannelOSDType"), &Value)
-			&& CheckEnumRange(static_cast<ChannelChangeType>(Value)))
-		m_ChannelChangeType = static_cast<ChannelChangeType>(Value);
-	Settings.Read(TEXT("ChannelOSDText"), &m_ChannelChangeText);
 
 	Settings.Read(TEXT("EventInfoOSDFont"), &m_EventInfoOSDFont);
 	Settings.Read(TEXT("EventInfoOSDDuration"), &m_EventInfoOSDDuration);
@@ -168,8 +163,6 @@ bool COSDOptions::WriteSettings(CSettings &Settings)
 	Settings.Write(TEXT("OSDFadeTime"), m_FadeTime);
 	Settings.Write(TEXT("EnabledOSD"), m_EnabledOSD);
 	Settings.Write(TEXT("EnabledOSDMask"), OSD_FLAG(OSDType::Trailer_) - 1);
-	Settings.Write(TEXT("ChannelOSDType"), static_cast<int>(m_ChannelChangeType));
-	Settings.Write(TEXT("ChannelOSDText"), m_ChannelChangeText);
 
 	Settings.Write(TEXT("EventInfoOSDFont"), &m_EventInfoOSDFont);
 	Settings.Write(TEXT("EventInfoOSDDuration"), m_EventInfoOSDDuration);
@@ -230,17 +223,6 @@ INT_PTR COSDOptions::DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			DlgCheckBox_Check(hDlg, IDC_OSDOPTIONS_SHOW_AUDIO, (m_EnabledOSD & OSD_FLAG(OSDType::Audio)) != 0);
 			DlgCheckBox_Check(hDlg, IDC_OSDOPTIONS_SHOW_RECORDING, (m_EnabledOSD & OSD_FLAG(OSDType::Recording)) != 0);
 			DlgCheckBox_Check(hDlg, IDC_OSDOPTIONS_SHOW_CHANNELNOINPUT, (m_EnabledOSD & OSD_FLAG(OSDType::ChannelNoInput)) != 0);
-			static const LPCTSTR ChannelChangeModeText[] = {
-				TEXT("ロゴとテキスト"),
-				TEXT("テキストのみ"),
-				TEXT("ロゴのみ"),
-			};
-			SetComboBoxList(
-				hDlg, IDC_OSDOPTIONS_CHANNELCHANGE_TYPE,
-				ChannelChangeModeText, lengthof(ChannelChangeModeText));
-			DlgComboBox_SetCurSel(hDlg, IDC_OSDOPTIONS_CHANNELCHANGE_TYPE, static_cast<int>(m_ChannelChangeType));
-			DlgEdit_SetText(hDlg, IDC_OSDOPTIONS_CHANNELCHANGE_TEXT, m_ChannelChangeText.c_str());
-			InitDropDownButton(hDlg, IDC_OSDOPTIONS_CHANNELCHANGE_TEXT_PARAMS);
 			EnableDlgItems(hDlg, IDC_OSDOPTIONS_FIRST, IDC_OSDOPTIONS_LAST, m_fShowOSD);
 
 			m_EventInfoOSDFontCur = m_EventInfoOSDFont;
@@ -255,11 +237,8 @@ INT_PTR COSDOptions::DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			StyleUtil::SetFontInfoItem(hDlg, IDC_DISPLAYMENU_FONT_INFO, m_DisplayFont);
 			DlgCheckBox_Check(hDlg, IDC_DISPLAYMENU_AUTOFONTSIZE, m_fDisplayFontAutoSize);
 
-			AddControls({
-				{IDC_OSDOPTIONS_GROUP,                     AlignFlag::Horz},
-				{IDC_OSDOPTIONS_CHANNELCHANGE_TEXT,        AlignFlag::Horz},
-				{IDC_OSDOPTIONS_CHANNELCHANGE_TEXT_PARAMS, AlignFlag::Right},
-			});
+			GetAppClass().NotificationBarOptions.DlgProc(hDlg, uMsg, wParam, lParam);
+			AddControls({{IDC_OSDOPTIONS_GROUP, AlignFlag::Horz}});
 		}
 		return TRUE;
 
@@ -276,6 +255,9 @@ INT_PTR COSDOptions::DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 #endif
 
 	case WM_COMMAND:
+		if (LOWORD(wParam) >= IDC_NOTIFICATIONBAR_FIRST
+				&& LOWORD(wParam) <= IDC_NOTIFICATIONBAR_LAST)
+			return GetAppClass().NotificationBarOptions.DlgProc(hDlg, uMsg, wParam, lParam);
 		switch (LOWORD(wParam)) {
 		case IDC_OSDOPTIONS_SHOWOSD:
 			EnableDlgItemsSyncCheckBox(
@@ -290,15 +272,6 @@ INT_PTR COSDOptions::DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		case IDC_OSDOPTIONS_OSDFONT_CHOOSE:
 			if (ChooseFontNoSize(hDlg, &m_CurOSDFont))
 				::SetDlgItemText(hDlg, IDC_OSDOPTIONS_OSDFONT_INFO, m_CurOSDFont.lfFaceName);
-			return TRUE;
-
-		case IDC_OSDOPTIONS_CHANNELCHANGE_TEXT_PARAMS:
-			{
-				RECT rc;
-				::GetWindowRect(::GetDlgItem(hDlg, IDC_OSDOPTIONS_CHANNELCHANGE_TEXT_PARAMS), &rc);
-				CUICore::CTitleStringMap StrMap(GetAppClass());
-				StrMap.InputParameter(hDlg, IDC_OSDOPTIONS_CHANNELCHANGE_TEXT, rc);
-			}
 			return TRUE;
 
 		case IDC_EVENTINFOOSD_FONT_CHOOSE:
@@ -337,8 +310,6 @@ INT_PTR COSDOptions::DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				if (DlgCheckBox_IsChecked(hDlg, IDC_OSDOPTIONS_SHOW_CHANNELNOINPUT))
 					EnabledOSD |= OSD_FLAG(OSDType::ChannelNoInput);
 				m_EnabledOSD = EnabledOSD;
-				m_ChannelChangeType = static_cast<ChannelChangeType>(DlgComboBox_GetCurSel(hDlg, IDC_OSDOPTIONS_CHANNELCHANGE_TYPE));
-				GetDlgItemString(hDlg, IDC_OSDOPTIONS_CHANNELCHANGE_TEXT, &m_ChannelChangeText);
 
 				if (!CompareLogFont(&m_EventInfoOSDFont, &m_EventInfoOSDFontCur)) {
 					m_EventInfoOSDFont = m_EventInfoOSDFontCur;
@@ -355,6 +326,7 @@ INT_PTR COSDOptions::DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				m_DisplayFont = m_DisplayFontCur;
 				m_fDisplayFontAutoSize = DlgCheckBox_IsChecked(hDlg, IDC_DISPLAYMENU_AUTOFONTSIZE);
 
+				GetAppClass().NotificationBarOptions.DlgProc(hDlg, uMsg, wParam, lParam);
 				m_fChanged = true;
 			}
 			return TRUE;

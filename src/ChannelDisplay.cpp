@@ -352,6 +352,20 @@ void CChannelDisplay::LoadSettings()
 }
 
 
+void CChannelDisplay::AdjustDisplayRect(RECT *pRect) const
+{
+	const int Width = pRect->right - pRect->left;
+	const int Height = pRect->bottom - pRect->top;
+	const int Margin = m_pStyleScaling->LogicalPixelsToPhysicalPixels(32);
+	const int MaxWidth = m_pStyleScaling->LogicalPixelsToPhysicalPixels(1100);
+	const int MinWidth = m_pStyleScaling->LogicalPixelsToPhysicalPixels(480);
+	const int MinHeight = m_pStyleScaling->LogicalPixelsToPhysicalPixels(300);
+	const int PanelWidth = std::min(Width, std::clamp(Width - 2 * Margin, MinWidth, MaxWidth));
+	const int PanelHeight = std::min(Height, std::max(Height * 3 / 4, MinHeight));
+	::InflateRect(pRect, -(Width - PanelWidth) / 2, -(Height - PanelHeight) / 2);
+}
+
+
 void CChannelDisplay::Layout()
 {
 	RECT rc;
@@ -609,14 +623,19 @@ bool CChannelDisplay::SetCurTuner(int Index, bool fUpdate)
 		}
 		m_CurChannel = -1;
 		m_ChannelScrollPos = 0;
-		LibISDB::GetCurrentEPGTime(&m_EpgBaseTime);
-		m_EpgBaseTime.Second = 0;
-		m_EpgBaseTime.Millisecond = 0;
-		UpdateChannelInfo(Index);
+		RefreshProgramInfo();
 		Layout();
 		Invalidate();
 	}
 	return true;
+}
+
+
+void CChannelDisplay::RefreshProgramInfo()
+{
+	LibISDB::GetCurrentEPGTime(&m_EpgBaseTime);
+	if (UpdateChannelInfo(m_CurTuner))
+		Invalidate();
 }
 
 
@@ -907,7 +926,6 @@ void CChannelDisplay::Draw(HDC hdc, const RECT *pPaintRect)
 	::SetTextColor(hdc, OldTextColor);
 	::SetBkMode(hdc, OldBkMode);
 
-	DrawCloseButton(hdc);
 }
 
 
@@ -1066,26 +1084,37 @@ LRESULT CChannelDisplay::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
 
 	case WM_LBUTTONDOWN:
 		::SetFocus(hwnd);
+		::SetCapture(hwnd);
+		return 0;
+
+	case WM_LBUTTONUP:
+		if (::GetCapture() != hwnd)
+			return 0;
+		::ReleaseCapture();
 		if (m_pChannelDisplayEventHandler != nullptr) {
 			const int x = GET_X_LPARAM(lParam), y = GET_Y_LPARAM(lParam);
 
-			if (CloseButtonHitTest(x, y)) {
-				Close();
+			const int Tuner = TunerItemHitTest(x, y);
+			if (Tuner >= 0) {
+				SetCurTuner(Tuner);
+				const CTuningSpaceInfo *pSpace = GetTuningSpaceInfo(Tuner);
+				if (pSpace == nullptr || pSpace->NumChannels() == 0)
+					NotifyTunerSelect();
 				return 0;
 			}
-			if (m_CurTuner >= 0) {
-				if (TunerItemHitTest(x, y) == m_CurTuner) {
-					NotifyTunerSelect();
-					return 0;
-				}
-			}
-			if (m_CurChannel >= 0) {
-				if (ChannelItemHitTest(x, y) == m_CurChannel) {
-					NotifyChannelSelect();
-				}
+
+			const int Channel = ChannelItemHitTest(x, y);
+			if (Channel >= 0) {
+				SetCurChannel(Channel);
+				NotifyChannelSelect();
 			}
 		}
 		return 0;
+
+	case WM_LBUTTONDBLCLK:
+		if (TunerItemHitTest(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)) >= 0)
+			return 0;
+		break;
 
 	case WM_MOUSEMOVE:
 		{
@@ -1094,15 +1123,10 @@ LRESULT CChannelDisplay::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
 				return 0;
 			m_LastCursorPos.x = x;
 			m_LastCursorPos.y = y;
-			int Index = TunerItemHitTest(x, y);
-			if (Index >= 0 && Index != m_CurTuner) {
-				SetCurTuner(Index);
-			}
-			if (Index < 0) {
-				Index = ChannelItemHitTest(x, y);
-				if (Index != m_CurChannel) {
+			if (TunerItemHitTest(x, y) < 0) {
+				const int Index = ChannelItemHitTest(x, y);
+				if (Index != m_CurChannel)
 					SetCurChannel(Index);
-				}
 			}
 		}
 		return 0;
@@ -1118,8 +1142,7 @@ LRESULT CChannelDisplay::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
 			pt.y = static_cast<SHORT>(HIWORD(Pos));
 			::ScreenToClient(hwnd, &pt);
 			if (TunerItemHitTest(pt.x, pt.y) >= 0
-					|| ChannelItemHitTest(pt.x, pt.y) >= 0
-					|| CloseButtonHitTest(pt.x, pt.y)) {
+					|| ChannelItemHitTest(pt.x, pt.y) >= 0) {
 				hCursor = GetActionCursor();
 			} else {
 				hCursor = ::LoadCursor(nullptr, IDC_ARROW);
@@ -1215,6 +1238,7 @@ LRESULT CChannelDisplay::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
 
 	case WM_SHOWWINDOW:
 		if (wParam) {
+			RefreshProgramInfo();
 			POINT pt;
 
 			::GetCursorPos(&pt);
@@ -1231,9 +1255,10 @@ LRESULT CChannelDisplay::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
 			if (m_ClockTime.Hour != CurTime.Hour
 					|| m_ClockTime.Minute != CurTime.Minute) {
 				m_ClockTime = CurTime;
-				const HDC hdc = GetDC(hwnd);
-				DrawClock(hdc);
-				ReleaseDC(hwnd, hdc);
+				if (GetVisible()) {
+					RefreshProgramInfo();
+					Invalidate();
+				}
 			}
 		}
 		return 0;

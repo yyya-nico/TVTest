@@ -39,6 +39,36 @@ CCommandManager::CCommandManager()
 }
 
 
+static bool IsRetiredViewingCommand(int ID)
+{
+	switch (ID) {
+	case CM_ZOOMOPTIONS:
+	case CM_ZOOMMENU:
+	case CM_ASPECTRATIO_TOGGLE:
+	case CM_ASPECTRATIOMENU:
+	case CM_PANANDSCANOPTIONS:
+	case CM_FRAMECUT:
+	case CM_ALWAYSONTOP:
+	case CM_BARMENU:
+	case CM_TITLEBAR:
+	case CM_POPUPTITLEBAR:
+	case CM_STATUSBAR:
+	case CM_POPUPSTATUSBAR:
+	case CM_STATUSBARRECORD:
+	case CM_SIDEBAR:
+	case CM_SIDEBAROPTIONS:
+	case CM_CUSTOMTITLEBAR:
+	case CM_SPLITTITLEBAR:
+		return true;
+	}
+	return (ID >= CM_ZOOM_FIRST && ID <= CM_ZOOM_LAST)
+		|| (ID >= CM_ASPECTRATIO_FIRST && ID <= CM_ASPECTRATIO_3D_LAST)
+		|| (ID >= CM_PANANDSCAN_PRESET_FIRST && ID <= CM_PANANDSCAN_PRESET_LAST)
+		|| (ID >= CM_WINDOWFRAME_NORMAL && ID <= CM_WINDOWFRAME_NONE)
+		|| (ID >= CM_SIDEBAR_PLACE_FIRST && ID <= CM_SIDEBAR_PLACE_LAST);
+}
+
+
 bool CCommandManager::RegisterCommand(
 	int FirstID, int LastID, int LastListingID,
 	LPCTSTR pszIDText,
@@ -51,6 +81,9 @@ bool CCommandManager::RegisterCommand(
 			|| ((LastID < CM_COMMAND_FIRST) || (LastID > CM_COMMAND_LAST))
 			|| (LastListingID != 0 && ((LastListingID < FirstID) || (LastListingID > LastID))))
 		return false;
+
+	if (IsRetiredViewingCommand(FirstID))
+		return true;
 
 	CommandInfo &Info = m_CommandList.emplace_back();
 

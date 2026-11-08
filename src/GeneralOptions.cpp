@@ -63,11 +63,8 @@ bool CGeneralOptions::ReadSettings(CSettings &Settings)
 	int Value;
 
 	TCHAR szDirectory[MAX_PATH];
-	if (Settings.Read(TEXT("DriverDirectory"), szDirectory, lengthof(szDirectory))
-			&& szDirectory[0] != '\0') {
-		m_BonDriverDirectory = szDirectory;
-		GetAppClass().CoreEngine.SetDriverDirectory(szDirectory);
-	}
+	if (Settings.Read(TEXT("DriverDirectory"), szDirectory, lengthof(szDirectory)))
+		SetDriverDirectory(szDirectory);
 
 	if (Settings.Read(TEXT("DefaultDriverType"), &Value)
 			&& CheckEnumRange(static_cast<DefaultDriverType>(Value)))
@@ -132,6 +129,13 @@ bool CGeneralOptions::SetDefaultDriverName(LPCTSTR pszDriverName)
 	else
 		m_DefaultBonDriverName = pszDriverName;
 	return true;
+}
+
+
+void CGeneralOptions::SetDriverDirectory(LPCTSTR pszDirectory)
+{
+	m_BonDriverDirectory = pszDirectory;
+	GetAppClass().CoreEngine.SetDriverDirectory(pszDirectory);
 }
 
 

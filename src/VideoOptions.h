@@ -95,7 +95,7 @@ namespace TVTest
 		String m_Mpeg2DecoderName;
 		String m_H264DecoderName;
 		String m_H265DecoderName;
-		LibISDB::DirectShow::VideoRenderer::RendererType m_VideoRendererType = LibISDB::DirectShow::VideoRenderer::RendererType::Default;
+		LibISDB::DirectShow::VideoRenderer::RendererType m_VideoRendererType = LibISDB::DirectShow::VideoRenderer::RendererType::EVR;
 		bool m_fResetPanScanEventChange = true;
 		bool m_fNoMaskSideCut = true;
 		LibISDB::ViewerFilter::ViewStretchMode m_StretchMode = LibISDB::ViewerFilter::ViewStretchMode::KeepAspectRatio;

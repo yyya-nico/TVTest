@@ -41,7 +41,6 @@ namespace TVTest
 			HWND hwndParent;
 			RECT ClientRect;
 			bool fForcePseudoOSD;
-			bool fAnimation;
 		};
 
 		class ABSTRACT_CLASS(CEventHandler)
@@ -79,8 +78,6 @@ namespace TVTest
 		void AdjustPosition();
 		bool ShowOSD(LPCTSTR pszText, ShowFlag Flags = ShowFlag::None);
 		void HideOSD();
-		bool ShowChannelOSD(const CChannelInfo *pInfo, LPCTSTR pszText, bool fChanging = false);
-		void HideChannelOSD();
 		bool ShowVolumeOSD(int Volume);
 		void HideVolumeOSD();
 		bool ShowEventInfoOSD(const LibISDB::EventInfo &EventInfo, EventInfoOSDFlag Flags);
@@ -100,9 +97,6 @@ namespace TVTest
 			Style::IntValue CompositeTextSizeRatio{24};
 			Style::IntValue CompositeTextSizeMin{12};
 			Style::IntValue CompositeTextSizeMax{100};
-			Style::Size LogoSize{64, 36};
-			String LogoEffect;
-			bool fChannelAnimation = true;
 			Style::Margins VolumeMargin{16};
 			Style::IntValue VolumeTextSizeMin{10};
 			Style::IntValue VolumeTextSizeMax{50};

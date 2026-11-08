@@ -48,20 +48,20 @@ namespace TVTest
 	public:
 		// サブメニュー項目の位置
 		enum {
-			SUBMENU_ZOOM           = 0,
-			SUBMENU_ASPECTRATIO    = 1,
-			SUBMENU_CHANNEL        = 5,
-			SUBMENU_SERVICE        = 6,
-			SUBMENU_SPACE          = 7,
-			SUBMENU_FAVORITES      = 8,
-			SUBMENU_CHANNELHISTORY = 9,
-			SUBMENU_VOLUME         = 12,
-			SUBMENU_AUDIO          = 13,
-			SUBMENU_VIDEO          = 14,
-			SUBMENU_RESET          = 24,
-			SUBMENU_BAR            = 28,
-			SUBMENU_PLUGIN         = 29,
-			SUBMENU_FILTERPROPERTY = 31
+			SUBMENU_ZOOM           = -1,
+			SUBMENU_ASPECTRATIO    = -2,
+			SUBMENU_CHANNEL        = 2,
+			SUBMENU_SERVICE        = 3,
+			SUBMENU_SPACE          = 4,
+			SUBMENU_FAVORITES      = 5,
+			SUBMENU_CHANNELHISTORY = 6,
+			SUBMENU_VOLUME         = 9,
+			SUBMENU_AUDIO          = 10,
+			SUBMENU_VIDEO          = 11,
+			SUBMENU_RESET          = 21,
+			SUBMENU_BAR            = -3,
+			SUBMENU_PLUGIN         = 25,
+			SUBMENU_FILTERPROPERTY = 27
 		};
 
 		CMainMenu() = default;

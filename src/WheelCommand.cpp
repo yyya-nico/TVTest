@@ -39,8 +39,6 @@ CWheelCommandManager::CWheelCommandManager()
 		{CM_WHEEL_VOLUME,      TEXT("WheelVolume")},
 		{CM_WHEEL_CHANNEL,     TEXT("WheelChannel")},
 		{CM_WHEEL_AUDIO,       TEXT("WheelAudio")},
-		{CM_WHEEL_ZOOM,        TEXT("WheelZoom")},
-		{CM_WHEEL_ASPECTRATIO, TEXT("WheelAspectRatio")},
 		{CM_WHEEL_AUDIODELAY,  TEXT("WheelAudioDelay")},
 	};
 

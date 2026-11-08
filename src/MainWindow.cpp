@@ -121,10 +121,8 @@ CMainWindow::CMainWindow(CAppMain &App)
 
 	m_ThinFrameWidth = std::max(::MulDiv(1, DPI, 96), 1);
 
-	if (Util::OS::IsWindows10OrLater()) {
-		m_fCustomFrame = true;
-		m_CustomFrameWidth = m_ThinFrameWidth;
-	}
+	m_fCustomFrame = true;
+	m_CustomFrameWidth = m_ThinFrameWidth;
 }
 
 
@@ -433,13 +431,6 @@ bool CMainWindow::ReadSettings(CSettings &Settings)
 	else if (m_1SegWindowSize.Width == Width && m_1SegWindowSize.Height == Height)
 		m_WindowSizeMode = WindowSizeMode::OneSeg;
 
-	if (Settings.Read(TEXT("AlwaysOnTop"), &f))
-		m_pCore->SetAlwaysOnTop(f);
-	if (Settings.Read(TEXT("ShowStatusBar"), &f))
-		SetStatusBarVisible(f);
-	if (Settings.Read(TEXT("ShowTitleBar"), &f))
-		SetTitleBarVisible(f);
-	Settings.Read(TEXT("PopupTitleBar"), &m_fPopupTitleBar);
 	if (Settings.Read(TEXT("PanelDockingIndex"), &Value)
 			&& (Value == 0 || Value == 1))
 		m_PanelPaneIndex = Value;
@@ -450,19 +441,6 @@ bool CMainWindow::ReadSettings(CSettings &Settings)
 		m_Fullscreen.SetPanelHeight(Value);
 	if (Settings.Read(TEXT("FullscreenPanelPlace"), &Value))
 		m_Fullscreen.SetPanelPlace(static_cast<CPanelFrame::DockingPlace>(Value));
-	if (Settings.Read(TEXT("ThinFrameWidth"), &Value))
-		m_ThinFrameWidth = std::max(Value, 1);
-	Value = FRAME_NORMAL;
-	if (!Settings.Read(TEXT("FrameType"), &Value)) {
-		if (Settings.Read(TEXT("ThinFrame"), &f) && f) // 以前のバージョンとの互換用
-			Value = FRAME_CUSTOM;
-	}
-	SetCustomFrame(Value != FRAME_NORMAL, Value == FRAME_CUSTOM ? m_ThinFrameWidth : 0);
-	if (!m_fCustomFrame && Settings.Read(TEXT("CustomTitleBar"), &f))
-		SetCustomTitleBar(f);
-	Settings.Read(TEXT("SplitTitleBar"), &m_fSplitTitleBar);
-	if (Settings.Read(TEXT("ShowSideBar"), &f))
-		SetSideBarVisible(f);
 	Settings.Read(TEXT("AccurateClock"), &m_fAccurateClock);
 
 	return true;
@@ -506,13 +484,7 @@ bool CMainWindow::WriteSettings(CSettings &Settings)
 
 bool CMainWindow::SetAlwaysOnTop(bool fTop)
 {
-	if (m_hwnd != nullptr) {
-		::SetWindowPos(
-			m_hwnd, fTop ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
-			SWP_NOMOVE | SWP_NOSIZE);
-		m_pCore->SetCommandCheckedState(CM_ALWAYSONTOP, fTop);
-	}
-	return true;
+	return false;
 }
 
 
@@ -549,36 +521,6 @@ void CMainWindow::ShowPanel(bool fShow)
 
 void CMainWindow::SetStatusBarVisible(bool fVisible)
 {
-	if (m_fShowStatusBar != fVisible) {
-		if (!m_pCore->GetFullscreen()) {
-			m_fShowStatusBar = fVisible;
-			if (m_hwnd != nullptr) {
-				LockLayout();
-
-				RECT rc;
-
-				if (fVisible) {
-					// 一瞬変な位置に出ないように見えない位置に移動
-					RECT rcClient;
-					::GetClientRect(m_App.StatusView.GetParent(), &rcClient);
-					m_App.StatusView.GetPosition(&rc);
-					m_App.StatusView.SetPosition(0, rcClient.bottom, rc.right - rc.left, rc.bottom - rc.top);
-				}
-				m_LayoutBase.SetContainerVisible(CONTAINER_ID_STATUS, fVisible);
-
-				GetPosition(&rc);
-				if (fVisible)
-					rc.bottom += m_App.StatusView.GetHeight();
-				else
-					rc.bottom -= m_App.StatusView.GetHeight();
-				SetPosition(&rc);
-
-				UpdateLayout();
-
-				m_pCore->SetCommandCheckedState(CM_STATUSBAR, m_fShowStatusBar);
-			}
-		}
-	}
 }
 
 
@@ -755,37 +697,6 @@ void CMainWindow::SetCustomFrame(bool fCustomFrame, int Width)
 
 void CMainWindow::SetSideBarVisible(bool fVisible)
 {
-	if (m_fShowSideBar != fVisible) {
-		m_fShowSideBar = fVisible;
-		if (m_hwnd != nullptr) {
-			LockLayout();
-
-			RECT rc;
-
-			if (fVisible) {
-				// 一瞬変な位置に出ないように見えない位置に移動
-				RECT rcClient;
-				::GetClientRect(m_App.SideBar.GetParent(), &rcClient);
-				m_App.SideBar.GetPosition(&rc);
-				m_App.SideBar.SetPosition(0, rcClient.bottom, rc.right - rc.left, rc.bottom - rc.top);
-			}
-			m_LayoutBase.SetContainerVisible(CONTAINER_ID_SIDEBAR, fVisible);
-
-			GetPosition(&rc);
-			RECT rcArea = rc;
-			if (fVisible)
-				m_SideBarManager.ReserveArea(&rcArea, true);
-			else
-				m_SideBarManager.AdjustArea(&rcArea);
-			rc.right = rc.left + (rcArea.right - rcArea.left);
-			rc.bottom = rc.top + (rcArea.bottom - rcArea.top);
-			SetPosition(&rc);
-
-			UpdateLayout();
-
-			m_pCore->SetCommandCheckedState(CM_SIDEBAR, m_fShowSideBar);
-		}
-	}
 }
 
 
@@ -1466,6 +1377,8 @@ LRESULT CMainWindow::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 	case WM_APP_EPGLOADED:
 		// EPGファイルが読み込まれた
 		TRACE(TEXT("WM_APP_EPGLOADED\n"));
+		if (m_App.ChannelDisplay.GetVisible())
+			m_App.ChannelDisplay.RefreshProgramInfo();
 		m_App.Panel.EnableProgramListUpdate(true);
 		if (IsPanelVisible()
 				&& (m_App.Panel.Form.GetCurPageID() == PANEL_ID_PROGRAMLIST
@@ -1491,8 +1404,17 @@ LRESULT CMainWindow::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 			BlockLock Lock(m_NotificationLock);
 
 			for (const NotificationInfo &Info : m_PendingNotificationList) {
-				if (m_App.NotificationBarOptions.IsNotifyEnabled(Info.NotifyType))
+				if (!m_App.NotificationBarOptions.IsNotifyEnabled(Info.NotifyType))
+					continue;
+				if (Info.NotifyType == CNotificationBarOptions::NOTIFY_TSPROCESSORERROR) {
+					m_TSProcessorNotification.SetFont(m_App.NotificationBarOptions.GetNotificationBarFont());
+					m_TSProcessorNotification.Show(
+						Info.Text.c_str(), Info.MessageType,
+						std::max(static_cast<DWORD>(m_App.NotificationBarOptions.GetNotificationBarDuration()), Info.Duration),
+						Info.fSkippable);
+				} else {
 					ShowNotificationBar(Info.Text.c_str(), Info.MessageType, Info.Duration, Info.fSkippable);
+				}
 			}
 
 			m_PendingNotificationList.clear();
@@ -1617,6 +1539,7 @@ bool CMainWindow::OnNCCreate(const CREATESTRUCT *pcs)
 	RegisterUIChild(&m_LayoutBase);
 	RegisterUIChild(&m_TitleBar);
 	RegisterUIChild(&m_NotificationBar);
+	RegisterUIChild(&m_TSProcessorNotification);
 	RegisterUIChild(&m_Display.GetViewWindow());
 
 	SetStyleScaling(&m_StyleScaling);
@@ -1718,14 +1641,16 @@ bool CMainWindow::OnCreate(const CREATESTRUCT *pcs)
 	m_App.StatusView.SetItemTheme(&ThemeManager);
 	m_App.StatusView.Create(
 		m_LayoutBase.GetHandle(),
-		//WS_CHILD | (m_fShowStatusBar ? WS_VISIBLE : 0) | WS_CLIPSIBLINGS,
-		WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+		WS_CHILD | WS_CLIPSIBLINGS,
 		0, IDC_STATUS);
 	m_App.StatusView.SetEventHandler(&m_StatusViewEventHandler);
 	m_App.StatusOptions.ApplyOptions();
 
 	m_NotificationBar.Create(
-		m_Display.GetVideoContainer().GetHandle(),
+		m_Display.GetViewWindow().GetHandle(),
+		WS_CHILD | WS_CLIPSIBLINGS);
+	m_TSProcessorNotification.Create(
+		m_Display.GetViewWindow().GetHandle(),
 		WS_CHILD | WS_CLIPSIBLINGS);
 
 	m_App.SideBarOptions.ApplySideBarOptions();
@@ -2235,8 +2160,8 @@ void CMainWindow::OnMouseMove(int x, int y)
 			return;
 		}
 
-		RECT rcClient, rcTitle, rcStatus, rcSideBar, rc;
-		bool fShowTitleBar = false, fShowStatusBar = false, fShowSideBar = false;
+		RECT rcClient, rcTitle, rc;
+		bool fShowTitleBar = false;
 
 		m_Display.GetViewWindow().GetClientRect(&rcClient);
 		MapWindowRect(m_Display.GetViewWindow().GetHandle(), m_LayoutBase.GetHandle(), &rcClient);
@@ -2246,44 +2171,6 @@ void CMainWindow::OnMouseMove(int x, int y)
 			if (::PtInRect(&rcTitle, pt))
 				fShowTitleBar = true;
 		}
-		if (!m_fShowStatusBar && m_App.StatusOptions.GetShowPopup()) {
-			rcStatus = rcClient;
-			rcStatus.top = rcStatus.bottom - m_App.StatusView.CalcHeight(rcClient.right - rcClient.left);
-			if (::PtInRect(&rcStatus, pt))
-				fShowStatusBar = true;
-		}
-		if (!m_fShowSideBar && m_App.SideBarOptions.ShowPopup()) {
-			switch (m_App.SideBarOptions.GetPlace()) {
-			case CSideBarOptions::PlaceType::Left:
-			case CSideBarOptions::PlaceType::Right:
-				if (!fShowStatusBar && !fShowTitleBar) {
-					m_SideBarManager.Layout(&rcClient, &rcSideBar);
-					if (::PtInRect(&rcSideBar, pt))
-						fShowSideBar = true;
-				}
-				break;
-			case CSideBarOptions::PlaceType::Top:
-				if (!m_fShowTitleBar && m_fPopupTitleBar)
-					rcClient.top = rcTitle.bottom;
-				m_SideBarManager.Layout(&rcClient, &rcSideBar);
-				if (::PtInRect(&rcSideBar, pt)) {
-					fShowSideBar = true;
-					if (!m_fShowTitleBar && m_fPopupTitleBar)
-						fShowTitleBar = true;
-				}
-				break;
-			case CSideBarOptions::PlaceType::Bottom:
-				if (!m_fShowStatusBar && m_App.StatusOptions.GetShowPopup())
-					rcClient.bottom = rcStatus.top;
-				m_SideBarManager.Layout(&rcClient, &rcSideBar);
-				if (::PtInRect(&rcSideBar, pt)) {
-					fShowSideBar = true;
-					if (!m_fShowStatusBar && m_App.StatusOptions.GetShowPopup())
-						fShowStatusBar = true;
-				}
-				break;
-			}
-		}
 
 		if (fShowTitleBar) {
 			if (!m_TitleBar.GetVisible())
@@ -2291,27 +2178,13 @@ void CMainWindow::OnMouseMove(int x, int y)
 		} else if (!m_fShowTitleBar && m_TitleBar.GetVisible()) {
 			ShowPopupTitleBar(false);
 		}
-		if (fShowStatusBar) {
-			if (!m_App.StatusView.GetVisible())
-				ShowPopupStatusBar(true);
-		} else if (!m_fShowStatusBar && m_App.StatusView.GetVisible()) {
-			ShowPopupStatusBar(false);
-		}
-		if (fShowSideBar) {
-			if (!m_App.SideBar.GetVisible()) {
-				m_App.SideBar.SetPosition(&rcSideBar);
-				ShowPopupSideBar(true);
-			}
-		} else if (!m_fShowSideBar && m_App.SideBar.GetVisible()) {
-			ShowPopupSideBar(false);
-		}
 
 		if (m_CursorTracker.OnCursorMove(x, y)) {
 			if (!m_fShowCursor)
 				ShowCursor(true);
 		}
 		if (m_App.ViewOptions.GetHideCursor()) {
-			if (fShowTitleBar || fShowStatusBar || fShowSideBar)
+			if (fShowTitleBar)
 				m_Timer.EndTimer(TIMER_ID_HIDECURSOR);
 			else
 				m_Timer.BeginTimer(TIMER_ID_HIDECURSOR, HIDE_CURSOR_DELAY);
@@ -2569,24 +2442,6 @@ bool CMainWindow::HandleCommand(CCommandManager::InvokeParameters &Params)
 		}
 		return true;
 
-	case CM_POPUPTITLEBAR:
-		if (!m_fShowTitleBar) {
-			if (m_pCore->GetFullscreen())
-				m_Fullscreen.ShowTitleBar(!m_Fullscreen.IsTitleBarVisible());
-			else
-				ShowPopupTitleBar(!m_TitleBar.GetVisible());
-		}
-		return true;
-
-	case CM_POPUPSTATUSBAR:
-		if (!m_fShowStatusBar) {
-			if (m_pCore->GetFullscreen())
-				m_Fullscreen.ShowStatusBar(!m_Fullscreen.IsStatusBarVisible());
-			else
-				ShowPopupStatusBar(!m_App.StatusView.GetVisible());
-		}
-		return true;
-
 	case CM_ZOOMMENU:
 	case CM_ASPECTRATIOMENU:
 	case CM_CHANNELMENU:
@@ -2765,6 +2620,7 @@ void CMainWindow::OnTimer(HWND hwnd, UINT id)
 				// 番組情報が更新された
 				fUpdateEventInfo = true;
 
+				UpdateProgramStatus();
 				m_pCore->UpdateTitle();
 				m_App.StatusView.UpdateItem(STATUS_ITEM_AUDIOCHANNEL);
 
@@ -3655,6 +3511,7 @@ void CMainWindow::OnChannelListChanged()
 
 void CMainWindow::OnChannelChanged(AppEvent::ChannelChangeStatus Status)
 {
+	m_LastProgramStatusEventID = LibISDB::EVENT_ID_INVALID;
 	const bool fSpaceChanged = !!(Status & AppEvent::ChannelChangeStatus::SpaceChanged);
 	const int CurSpace = m_App.ChannelManager.GetCurrentSpace();
 	const CChannelInfo *pCurChannel = m_App.ChannelManager.GetCurrentChannelInfo();
@@ -3676,8 +3533,8 @@ void CMainWindow::OnChannelChanged(AppEvent::ChannelChangeStatus Status)
 	m_App.Panel.ControlPanel.UpdateItem(CONTROLPANEL_ITEM_CHANNEL);
 	m_App.Panel.ControlPanel.UpdateItem(CONTROLPANEL_ITEM_TUNER);
 
-	if (pCurChannel != nullptr && m_App.OSDOptions.IsOSDEnabled(COSDOptions::OSDType::Channel))
-		ShowChannelOSD();
+	if (pCurChannel != nullptr)
+		ShowChannelStatus(*pCurChannel);
 
 	m_fNeedEventInfoOSD = false;
 	if (!m_App.OSDManager.IsEventInfoOSDVisible()
@@ -3952,34 +3809,11 @@ void CMainWindow::ShowPopupTitleBar(bool fShow)
 
 void CMainWindow::ShowPopupStatusBar(bool fShow)
 {
-	if (fShow) {
-		const CViewWindow &ViewWindow = GetCurrentViewWindow();
-		RECT rc;
-
-		ViewWindow.GetClientRect(&rc);
-		MapWindowRect(ViewWindow.GetHandle(), m_App.StatusView.GetParent(), &rc);
-		rc.top = rc.bottom - m_App.StatusView.CalcHeight(rc.right - rc.left);
-		m_App.StatusView.SetPosition(&rc);
-		m_App.StatusView.SetOpacity(m_App.StatusOptions.GetPopupOpacity() * 255 / CStatusOptions::OPACITY_MAX);
-		m_App.StatusView.SetVisible(true);
-		::BringWindowToTop(m_App.StatusView.GetHandle());
-	} else {
-		m_App.StatusView.SetVisible(false);
-		m_App.StatusView.SetOpacity(255);
-	}
 }
 
 
 void CMainWindow::ShowPopupSideBar(bool fShow)
 {
-	if (fShow) {
-		m_App.SideBar.SetOpacity(m_App.SideBarOptions.GetPopupOpacity() * 255 / CSideBarOptions::OPACITY_MAX);
-		m_App.SideBar.SetVisible(true);
-		::BringWindowToTop(m_App.SideBar.GetHandle());
-	} else {
-		m_App.SideBar.SetVisible(false);
-		m_App.SideBar.SetOpacity(255);
-	}
 }
 
 
@@ -4002,45 +3836,80 @@ void CMainWindow::ShowCursor(bool fShow)
 }
 
 
-void CMainWindow::ShowChannelOSD()
+void CMainWindow::ShowChannelStatus(const CChannelInfo &Channel)
 {
-	if (GetVisible() && !::IsIconic(m_hwnd)) {
-		const CChannelInfo *pInfo;
+	if (!GetVisible() || ::IsIconic(m_hwnd)
+			|| m_App.Core.IsChannelScanning()
+			|| !m_App.OSDOptions.IsOSDEnabled(COSDOptions::OSDType::Channel))
+		return;
 
-		if (m_fWheelChannelChanging)
-			pInfo = m_App.ChannelManager.GetChangingChannelInfo();
-		else
-			pInfo = m_App.ChannelManager.GetCurrentChannelInfo();
-		if (pInfo != nullptr) {
-			String Text;
+	LibISDB::DateTime Time;
+	LibISDB::EventInfo Event;
+	LibISDB::GetCurrentEPGTime(&Time);
+	const bool fHaveEvent = m_App.EPGDatabase.GetEventInfo(
+		Channel.GetNetworkID(), Channel.GetTransportStreamID(), Channel.GetServiceID(), Time, &Event);
+	ShowChannelStatusText(
+		Channel.GetName(), fHaveEvent ? Event.EventName.c_str() : nullptr,
+		m_App.OSDOptions.GetFadeTime());
+}
 
-			if (m_App.OSDOptions.GetChannelChangeType() != COSDOptions::ChannelChangeType::LogoOnly) {
-				CEventVariableStringMap::EventInfo Event;
 
-				m_App.Core.GetVariableStringEventInfo(&Event);
-				if (Event.Event.EventName.empty()) {
-					LibISDB::DateTime Time;
-					LibISDB::EventInfo EventData;
-
-					LibISDB::GetCurrentEPGTime(&Time);
-					if (m_App.EPGDatabase.GetEventInfo(
-								pInfo->GetNetworkID(),
-								pInfo->GetTransportStreamID(),
-								pInfo->GetServiceID(),
-								Time, &EventData))
-						Event.Event = EventData;
-				}
-				CUICore::CTitleStringMap Map(m_App, &Event);
-				FormatVariableString(&Map, m_App.OSDOptions.GetChannelChangeText(), &Text);
-			}
-			m_App.OSDManager.ShowChannelOSD(pInfo, Text.c_str(), m_fWheelChannelChanging);
-		}
+void CMainWindow::ShowChannelStatusText(LPCTSTR pszChannelName, LPCTSTR pszEventName, DWORD Duration)
+{
+	String Text = pszChannelName;
+	if (!IsStringEmpty(pszEventName)) {
+		Text += TEXT("\n");
+		Text += pszEventName;
 	}
+	m_NotificationBar.SetFont(m_App.NotificationBarOptions.GetNotificationBarFont());
+	m_NotificationBar.Show(Text.c_str(), CNotificationBar::MessageType::Info, Duration, true, true);
+}
+
+
+void CMainWindow::UpdateProgramStatus()
+{
+	if (!GetVisible() || ::IsIconic(m_hwnd) || m_fWheelChannelChanging || m_App.Core.IsChannelScanning()
+			|| !m_App.NotificationBarOptions.IsNotifyEnabled(CNotificationBarOptions::NOTIFY_EVENTNAME))
+		return;
+
+	const WORD EventID = m_App.CoreEngine.GetEventID();
+	LibISDB::EventInfo Event;
+	if (EventID == LibISDB::EVENT_ID_INVALID || !m_App.CoreEngine.GetCurrentEventInfo(&Event)
+			|| Event.EventID != EventID || Event.EventName.empty()
+			|| (m_LastProgramStatusEventID == EventID && m_LastProgramStatusEventName == Event.EventName))
+		return;
+
+	CChannelInfo Channel;
+	if (!m_App.Core.GetCurrentStreamChannelInfo(&Channel, true) || IsStringEmpty(Channel.GetName())
+			|| Event.NetworkID != Channel.GetNetworkID()
+			|| Event.TransportStreamID != Channel.GetTransportStreamID()
+			|| Event.ServiceID != Channel.GetServiceID())
+		return;
+
+	if (const CChannelInfo *pSelected = m_App.ChannelManager.GetCurrentChannelInfo()) {
+		if ((pSelected->GetNetworkID() != 0 && pSelected->GetNetworkID() != Channel.GetNetworkID())
+				|| (pSelected->GetTransportStreamID() != 0
+					&& pSelected->GetTransportStreamID() != Channel.GetTransportStreamID()))
+			return;
+	}
+
+	ShowChannelStatusText(
+		Channel.GetName(), Event.EventName.c_str(),
+		m_App.NotificationBarOptions.GetNotificationBarDuration());
+	m_LastProgramStatusEventID = EventID;
+	m_LastProgramStatusEventName = std::move(Event.EventName);
+}
+
+
+void CMainWindow::ClearChannelStatus()
+{
+	m_NotificationBar.ClearChannel();
 }
 
 
 void CMainWindow::OnServiceChanged()
 {
+	m_LastProgramStatusEventID = LibISDB::EVENT_ID_INVALID;
 	int CurService = 0;
 	const WORD ServiceID = m_App.CoreEngine.GetServiceID();
 	if (ServiceID != LibISDB::SERVICE_ID_INVALID)
@@ -4072,25 +3941,7 @@ void CMainWindow::OnEventChanged()
 
 	m_pCore->UpdateTitle();
 
-	if (m_App.NotificationBarOptions.IsNotifyEnabled(CNotificationBarOptions::NOTIFY_EVENTNAME)
-			&& !m_App.Core.IsChannelScanning()) {
-		LibISDB::EventInfo EventInfo;
-
-		if (m_App.CoreEngine.GetCurrentEventInfo(&EventInfo)) {
-			String Text;
-
-			if (EventInfo.StartTime.IsValid()) {
-				TCHAR szTime[EpgUtil::MAX_EVENT_TIME_LENGTH];
-
-				if (EpgUtil::FormatEventTime(EventInfo, szTime, lengthof(szTime)) > 0) {
-					Text = szTime;
-					Text += _T(' ');
-				}
-			}
-			Text += EventInfo.EventName;
-			ShowNotificationBar(Text.c_str(), CNotificationBar::MessageType::Info, 0, true);
-		}
-	}
+	UpdateProgramStatus();
 
 	if (m_App.OSDManager.IsEventInfoOSDVisible()) {
 		m_App.UICore.ShowEventInfoOSD();
@@ -4212,7 +4063,7 @@ void CMainWindow::OnMouseWheel(WPARAM wParam, LPARAM lParam, bool fHorz)
 		if (pDisplayView != nullptr) {
 			RECT rc;
 
-			m_Display.GetDisplayBase().GetParent()->GetScreenPosition(&rc);
+			pDisplayView->GetScreenPosition(&rc);
 			if (::PtInRect(&rc, pt)) {
 				if (pDisplayView->OnMouseWheel(fHorz ? WM_MOUSEHWHEEL : WM_MOUSEWHEEL, wParam, lParam))
 					return;
@@ -4305,8 +4156,8 @@ void CMainWindow::OnMouseWheel(WPARAM wParam, LPARAM lParam, bool fHorz)
 				SetWheelChannelChanging(true, m_App.OperationOptions.GetWheelChannelDelay());
 				m_App.ChannelManager.SetChangingChannel(Channel);
 				m_App.StatusView.UpdateItem(STATUS_ITEM_CHANNEL);
-				if (m_App.OSDOptions.IsOSDEnabled(COSDOptions::OSDType::Channel))
-					ShowChannelOSD();
+				if (const CChannelInfo *pInfo = m_App.ChannelManager.GetChangingChannelInfo())
+					ShowChannelStatus(*pInfo);
 			}
 			fProcessed = true;
 		}
@@ -4319,33 +4170,7 @@ void CMainWindow::OnMouseWheel(WPARAM wParam, LPARAM lParam, bool fHorz)
 		}
 		break;
 
-	case CM_WHEEL_ZOOM:
-		if (Command != m_PrevWheelCommand || TickTimeSpan(m_PrevWheelTime, CurTime) >= 500) {
-			if (!IsZoomed(m_hwnd) && !m_pCore->GetFullscreen()) {
-				int ZoomNum, ZoomDenom;
-				if (m_pCore->GetZoomRate(&ZoomNum, &ZoomDenom)) {
-					int Step = m_App.OperationOptions.GetWheelZoomStep();
-					if (Delta < 0)
-						Step = -Step;
-					if (ZoomDenom >= 100) {
-						ZoomNum += ::MulDiv(Step, ZoomDenom, 100);
-					} else {
-						ZoomNum = ZoomNum * 100 + Step * ZoomDenom;
-						ZoomDenom *= 100;
-					}
-					SetZoomRate(ZoomNum, ZoomDenom);
-				}
-			}
-			fProcessed = true;
-		}
-		break;
 
-	case CM_WHEEL_ASPECTRATIO:
-		if (Command != m_PrevWheelCommand || TickTimeSpan(m_PrevWheelTime, CurTime) >= 300) {
-			SendCommand(CM_ASPECTRATIO_TOGGLE);
-			fProcessed = true;
-		}
-		break;
 
 	case CM_WHEEL_AUDIODELAY:
 		SendCommand(Delta > 0 ? CM_AUDIODELAY_MINUS : CM_AUDIODELAY_PLUS);
@@ -5405,6 +5230,7 @@ void CMainWindow::SetTheme(const Theme::CThemeManager *pThemeManager)
 
 	m_TitleBar.SetTheme(pThemeManager);
 	m_NotificationBar.SetTheme(pThemeManager);
+	m_TSProcessorNotification.SetTheme(pThemeManager);
 	m_Fullscreen.SetTheme(pThemeManager);
 }
 
@@ -5421,16 +5247,10 @@ bool CMainWindow::GetOSDClientInfo(COSDManager::OSDClientInfo *pInfo)
 		pInfo->fForcePseudoOSD = true;
 	}
 
-	// まだ再生が開始されていない場合、アニメーションを無効にする
-	// アニメーションの途中で DirectShow の初期化処理が入り、中途半端な表示になるため
-	if (m_fEnablePlayback && !IsViewerEnabled())
-		pInfo->fAnimation = false;
-
 	RECT rc;
 	::GetClientRect(pInfo->hwndParent, &rc);
-	rc.top += m_NotificationBar.GetBarHeight();
-	if (!m_fShowStatusBar && m_App.StatusOptions.GetShowPopup())
-		rc.bottom -= m_App.StatusView.GetHeight();
+	if (m_NotificationBar.GetVisible())
+		rc.top += m_NotificationBar.GetBarHeight();
 	pInfo->ClientRect = rc;
 
 	return true;
@@ -5630,6 +5450,27 @@ LRESULT CMainWindow::CFullscreen::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam,
 
 	case WM_SIZE:
 		m_LayoutBase.SetPosition(0, 0, LOWORD(lParam), HIWORD(lParam));
+		m_MainWindow.m_NotificationBar.AdjustPosition();
+		m_MainWindow.m_TSProcessorNotification.AdjustPosition();
+		if (const HWND hwndClose = ::GetDlgItem(hwnd, CM_CLOSE)) {
+			const int StatusBarHeight = m_pStyleScaling->LogicalPixelsToPhysicalPixels(78);
+			const int Margin = m_pStyleScaling->LogicalPixelsToPhysicalPixels(32);
+			const int Width = m_pStyleScaling->LogicalPixelsToPhysicalPixels(72);
+			const int Height = m_pStyleScaling->LogicalPixelsToPhysicalPixels(32);
+			::SetWindowPos(
+				hwndClose, HWND_TOP, LOWORD(lParam) - Width - Margin, Margin + StatusBarHeight,
+				Width, Height, SWP_NOACTIVATE);
+		}
+		return 0;
+
+	case WM_SETTINGCHANGE:
+	case WM_THEMECHANGED:
+		UpdateCloseButtonTheme();
+		break;
+
+	case WM_LBUTTONUP:
+		if (!m_pDisplay->GetDisplayBase().IsVisible() || m_App.ChannelDisplay.GetVisible())
+			m_MainWindow.SendCommand(CM_CHANNELDISPLAY);
 		return 0;
 
 	case WM_RBUTTONUP:
@@ -5765,6 +5606,8 @@ LRESULT CMainWindow::CFullscreen::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam,
 	case WM_DESTROY:
 		m_pDisplay->GetVideoContainer().SetParent(&m_pDisplay->GetViewWindow());
 		m_pDisplay->GetViewWindow().SendSizeMessage();
+		m_MainWindow.m_NotificationBar.SetHost(m_pDisplay->GetViewWindow().GetHandle());
+		m_MainWindow.m_TSProcessorNotification.SetHost(m_pDisplay->GetViewWindow().GetHandle());
 		delete m_LayoutBase.GetTopContainer();
 		m_LayoutBase.SetTopContainer(nullptr);
 		ShowCursor(true);
@@ -5916,6 +5759,19 @@ bool CMainWindow::CFullscreen::OnCreate()
 			WM_GETICON, m_TitleBar.IsIconDrawSmall() ? ICON_SMALL : ICON_BIG, 0)));
 	m_TitleBar.SetMaximizeMode(m_MainWindow.GetMaximize());
 	m_TitleBar.SetFullscreenMode(true);
+	m_MainWindow.m_NotificationBar.SetHost(m_ViewWindow.GetHandle());
+	m_MainWindow.m_TSProcessorNotification.SetHost(m_ViewWindow.GetHandle());
+
+	const HWND hwndClose = ::CreateWindowEx(
+		0, TEXT("BUTTON"), TEXT("閉じる"), WS_CHILD | WS_CLIPSIBLINGS | BS_PUSHBUTTON,
+		0, 0, 0, 0, m_hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(CM_CLOSE)),
+		m_App.GetInstance(), nullptr);
+	if (hwndClose != nullptr) {
+		::SendMessage(hwndClose, WM_SETFONT, reinterpret_cast<WPARAM>(::GetStockObject(DEFAULT_GUI_FONT)), FALSE);
+		UpdateCloseButtonTheme();
+		const CDisplayBase &DisplayBase = m_pDisplay->GetDisplayBase();
+		ShowCloseButton(DisplayBase.IsVisible() && DisplayBase.GetDisplayView() == &m_App.ChannelDisplay);
+	}
 
 	m_fShowEventInfoOSD = m_App.OSDManager.IsEventInfoOSDVisible();
 	m_App.OSDManager.Reset();
@@ -5936,6 +5792,26 @@ bool CMainWindow::CFullscreen::OnCreate()
 	::SetTimer(m_hwnd, TIMER_ID_HIDECURSOR, HIDE_CURSOR_DELAY, nullptr);
 
 	return true;
+}
+
+
+void CMainWindow::CFullscreen::ShowCloseButton(bool fShow)
+{
+	if (const HWND hwndClose = ::GetDlgItem(m_hwnd, CM_CLOSE)) {
+		::ShowWindow(hwndClose, fShow ? SW_SHOWNA : SW_HIDE);
+		if (fShow)
+			::BringWindowToTop(hwndClose);
+	}
+}
+
+
+void CMainWindow::CFullscreen::UpdateCloseButtonTheme()
+{
+	if (const HWND hwndClose = ::GetDlgItem(m_hwnd, CM_CLOSE)) {
+		const bool fAllowDark = GetStyleManager()->IsDarkDialog();
+		SetWindowAllowDarkMode(hwndClose, fAllowDark);
+		SetWindowDarkTheme(hwndClose, fAllowDark && TVTest::IsDarkMode());
+	}
 }
 
 
@@ -6158,62 +6034,6 @@ void CMainWindow::CFullscreen::OnMouseMove()
 		return;
 	}
 
-	bool fShowStatusView = false, fShowTitleBar = false, fShowSideBar = false;
-
-	RECT rcClient;
-	m_ViewWindow.GetClientRect(&rcClient);
-	MapWindowRect(m_ViewWindow.GetHandle(), m_hwnd, &rcClient);
-
-	RECT rcStatus = rcClient;
-	rcStatus.top = rcStatus.bottom - m_App.StatusView.CalcHeight(rcClient.right - rcClient.left);
-	if (::PtInRect(&rcStatus, pt))
-		fShowStatusView = true;
-
-	RECT rc = rcClient, rcTitle;
-	m_TitleBarManager.Layout(&rc, &rcTitle);
-	if (::PtInRect(&rcTitle, pt))
-		fShowTitleBar = true;
-
-	if (m_App.SideBarOptions.ShowPopup()) {
-		RECT rcSideBar;
-		switch (m_App.SideBarOptions.GetPlace()) {
-		case CSideBarOptions::PlaceType::Left:
-		case CSideBarOptions::PlaceType::Right:
-			if (!fShowStatusView && !fShowTitleBar) {
-				m_MainWindow.m_SideBarManager.Layout(&rcClient, &rcSideBar);
-				if (::PtInRect(&rcSideBar, pt))
-					fShowSideBar = true;
-			}
-			break;
-		case CSideBarOptions::PlaceType::Top:
-			rcClient.top = rcTitle.bottom;
-			m_MainWindow.m_SideBarManager.Layout(&rcClient, &rcSideBar);
-			if (::PtInRect(&rcSideBar, pt)) {
-				fShowSideBar = true;
-				fShowTitleBar = true;
-			}
-			break;
-		case CSideBarOptions::PlaceType::Bottom:
-			rcClient.bottom = rcStatus.top;
-			m_MainWindow.m_SideBarManager.Layout(&rcClient, &rcSideBar);
-			if (::PtInRect(&rcSideBar, pt)) {
-				fShowSideBar = true;
-				fShowStatusView = true;
-			}
-			break;
-		}
-	}
-
-	ShowStatusBar(fShowStatusView);
-	ShowTitleBar(fShowTitleBar);
-	ShowSideBar(fShowSideBar);
-
-	if (fShowStatusView || fShowTitleBar || fShowSideBar) {
-		m_CursorTracker.Reset();
-		::KillTimer(m_hwnd, TIMER_ID_HIDECURSOR);
-		return;
-	}
-
 	if (m_CursorTracker.OnCursorMove(pt.x, pt.y)) {
 		if (!m_fShowCursor)
 			ShowCursor(true);
@@ -6231,26 +6051,6 @@ void CMainWindow::CFullscreen::SetTitleFont(const Style::Font &Font)
 
 void CMainWindow::CFullscreen::ShowStatusBar(bool fShow)
 {
-	if (fShow == m_fShowStatusView)
-		return;
-
-	Layout::CLayoutBase &LayoutBase = m_MainWindow.GetLayoutBase();
-
-	if (fShow) {
-		ShowSideBar(false);
-		m_App.StatusView.SetVisible(false);
-		LayoutBase.SetContainerVisible(CONTAINER_ID_STATUS, false);
-		OnSharedBarVisibilityChange(m_App.StatusView, m_App.StatusView, true);
-		m_MainWindow.ShowPopupStatusBar(true);
-	} else {
-		OnBarHide(m_App.StatusView);
-		m_MainWindow.ShowPopupStatusBar(false);
-		OnSharedBarVisibilityChange(m_App.StatusView, m_App.StatusView, false);
-		if (m_MainWindow.GetStatusBarVisible())
-			LayoutBase.SetContainerVisible(CONTAINER_ID_STATUS, true);
-	}
-
-	m_fShowStatusView = fShow;
 }
 
 
@@ -6284,34 +6084,6 @@ void CMainWindow::CFullscreen::ShowTitleBar(bool fShow)
 
 void CMainWindow::CFullscreen::ShowSideBar(bool fShow)
 {
-	if (fShow == m_fShowSideBar)
-		return;
-
-	Layout::CLayoutBase &LayoutBase = m_MainWindow.GetLayoutBase();
-
-	if (fShow) {
-		RECT rcClient, rcBar;
-
-		m_App.SideBar.SetVisible(false);
-		LayoutBase.SetContainerVisible(CONTAINER_ID_SIDEBAR, false);
-		OnSharedBarVisibilityChange(m_App.SideBar, m_App.SideBar, true);
-		m_ViewWindow.GetClientRect(&rcClient);
-		if (m_fShowStatusView)
-			rcClient.bottom -= m_App.StatusView.GetHeight();
-		if (m_fShowTitleBar)
-			rcClient.top += m_TitleBar.GetHeight();
-		m_MainWindow.m_SideBarManager.Layout(&rcClient, &rcBar);
-		m_App.SideBar.SetPosition(&rcBar);
-		m_MainWindow.ShowPopupSideBar(true);
-	} else {
-		OnBarHide(m_App.SideBar);
-		m_MainWindow.ShowPopupSideBar(false);
-		OnSharedBarVisibilityChange(m_App.SideBar, m_App.SideBar, false);
-		if (m_MainWindow.GetSideBarVisible())
-			LayoutBase.SetContainerVisible(CONTAINER_ID_SIDEBAR, true);
-	}
-
-	m_fShowSideBar = fShow;
 }
 
 
@@ -6847,16 +6619,8 @@ CMainWindow::CVideoContainerEventHandler::CVideoContainerEventHandler(CMainWindo
 
 void CMainWindow::CVideoContainerEventHandler::OnSizeChanged(int Width, int Height)
 {
-	CNotificationBar &NotificationBar = m_pMainWindow->m_NotificationBar;
-	if (NotificationBar.GetVisible()) {
-		RECT rc, rcView;
-
-		NotificationBar.GetPosition(&rc);
-		::GetClientRect(NotificationBar.GetParent(), &rcView);
-		rc.left = rcView.left;
-		rc.right = rcView.right;
-		NotificationBar.SetPosition(&rc);
-	}
+	m_pMainWindow->m_NotificationBar.AdjustPosition();
+	m_pMainWindow->m_TSProcessorNotification.AdjustPosition();
 
 	m_pMainWindow->m_App.OSDManager.HideVolumeOSD();
 	m_pMainWindow->m_App.OSDManager.AdjustPosition();
@@ -6907,8 +6671,12 @@ bool CMainWindow::CDisplayBaseEventHandler::OnVisibleChange(bool fVisible)
 	if (!m_pMainWindow->IsViewerEnabled()) {
 		m_pMainWindow->m_Display.GetVideoContainer().SetVisible(fVisible);
 	}
-	if (fVisible && m_pMainWindow->m_pCore->GetFullscreen()) {
-		m_pMainWindow->m_Fullscreen.HideAllBars();
+	if (m_pMainWindow->m_pCore->GetFullscreen()) {
+		if (fVisible)
+			m_pMainWindow->m_Fullscreen.HideAllBars();
+		m_pMainWindow->m_Fullscreen.ShowCloseButton(
+			fVisible && m_pMainWindow->m_Display.GetDisplayBase().GetDisplayView()
+				== &m_pMainWindow->m_App.ChannelDisplay);
 	}
 	return true;
 }

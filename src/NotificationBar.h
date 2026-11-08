@@ -46,7 +46,7 @@ namespace TVTest
 			Error,
 		};
 
-		CNotificationBar();
+		explicit CNotificationBar(bool fCentered = false);
 
 	// CBasicWindow
 		bool Create(HWND hwndParent, DWORD Style, DWORD ExStyle = 0, int ID = 0) override;
@@ -59,11 +59,13 @@ namespace TVTest
 		void SetTheme(const Theme::CThemeManager *pThemeManager) override;
 
 	// CNotificationBar
-		bool Show(LPCTSTR pszText, MessageType Type, DWORD Timeout, bool fSkippable);
+		bool Show(LPCTSTR pszText, MessageType Type, DWORD Timeout, bool fSkippable, bool fChannel = false);
 		bool Hide();
 		bool SetFont(const Style::Font &Font);
-		void SetAnimate(bool fAnimate) { m_fAnimate = fAnimate; }
-		int GetBarHeight() const { return m_BarHeight; }
+		void ClearChannel();
+		void SetHost(HWND hwndParent);
+		void AdjustPosition();
+		int GetBarHeight() const;
 
 		static bool Initialize(HINSTANCE hinst);
 
@@ -74,11 +76,13 @@ namespace TVTest
 			MessageType Type;
 			DWORD Timeout;
 			bool fSkippable;
+			bool fChannel;
 		};
 
 		struct NotificationBarStyle
 		{
 			Style::Margins Padding{4, 2, 4, 2};
+			Style::Margins ChannelPadding{12, 6, 12, 6};
 			Style::Size IconSize{::GetSystemMetrics(SM_CXSMICON), ::GetSystemMetrics(SM_CYSMICON)};
 			Style::Margins IconMargin{0, 0, 4, 0};
 			Style::Margins TextMargin{0};
@@ -90,34 +94,28 @@ namespace TVTest
 				const Style::CStyleScaling *pStyleScaling);
 		};
 
-		enum {
-			TIMER_ID_SHOWANIMATION = 0x0001U,
-			TIMER_ID_FADEANIMATION = 0x0002U,
-			TIMER_ID_HIDE          = 0x0004U
-		};
+		static constexpr UINT TIMER_ID_HIDE = 1;
 
-		static constexpr int SHOW_ANIMATION_COUNT = 4;
-		static constexpr DWORD SHOW_ANIMATION_INTERVAL = 50;
-		static constexpr int FADE_ANIMATION_COUNT = 4;
-		static constexpr DWORD FADE_ANIMATION_INTERVAL = 50;
-
+		const bool m_fCentered;
 		NotificationBarStyle m_Style;
 		Theme::BackgroundStyle m_BackStyle;
 		COLORREF m_TextColor[3];
 		Style::Font m_StyleFont;
 		DrawUtil::CFont m_Font;
+		DrawUtil::CFont m_ChannelNameFont;
+		DrawUtil::CFont m_ProgramTitleFont;
 		int m_BarHeight = 0;
-		bool m_fAnimate = true;
+		int m_ChannelNameHeight = 0;
+		int m_ProgramTitleHeight = 0;
 		std::deque<MessageInfo> m_MessageQueue;
-		int m_TimerCount = 0;
 		CIcon m_Icons[3];
 
 		static HINSTANCE m_hinst;
 
 		void CalcBarHeight();
 		void GetBarPosition(RECT *pRect) const;
-		void GetAnimatedBarPosition(RECT *pRect, int Frame, int NumFrames) const;
 		void SetHideTimer();
+		void UpdateBar();
 
 	// CCustomWindow
 		LRESULT OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) override;

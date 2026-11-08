@@ -43,10 +43,7 @@ constexpr int ITEM_STATE_VISIBLE = 0x0001;
 
 const CMenuOptions::MenuInfo CMenuOptions::m_DefaultMenuItemList[] =
 {
-	{CMainMenu::SUBMENU_ZOOM,           IDS_MENU_ZOOM,           CM_ZOOMMENU},
-	{CMainMenu::SUBMENU_ASPECTRATIO,    IDS_MENU_ASPECTRATIO,    CM_ASPECTRATIOMENU},
 	{CM_FULLSCREEN,                     CM_FULLSCREEN,           CM_FULLSCREEN},
-	{CM_ALWAYSONTOP,                    CM_ALWAYSONTOP,          CM_ALWAYSONTOP},
 	{MENU_ID_SEPARATOR,                 0,                       0},
 	{CMainMenu::SUBMENU_CHANNEL,        IDS_MENU_CHANNEL,        CM_CHANNELMENU},
 	{CMainMenu::SUBMENU_SERVICE,        IDS_MENU_SERVICE,        CM_SERVICEMENU},
@@ -71,7 +68,6 @@ const CMenuOptions::MenuInfo CMenuOptions::m_DefaultMenuItemList[] =
 	{MENU_ID_SEPARATOR,                 0,                       0},
 	{CM_PANEL,                          CM_PANEL,                CM_PANEL},
 	{CM_PROGRAMGUIDE,                   CM_PROGRAMGUIDE,         CM_PROGRAMGUIDE},
-	{CMainMenu::SUBMENU_BAR,            IDS_MENU_BAR,            CM_BARMENU},
 	{CMainMenu::SUBMENU_PLUGIN,         IDS_MENU_PLUGIN,         CM_PLUGINMENU},
 	{CM_OPTIONS,                        CM_OPTIONS,              CM_OPTIONS},
 	{CMainMenu::SUBMENU_FILTERPROPERTY, IDS_MENU_FILTERPROPERTY, CM_FILTERPROPERTYMENU},
@@ -208,10 +204,14 @@ bool CMenuOptions::GetMenuItemList(std::vector<int> *pItemList)
 				int &ID = Item.ID;
 				if (ID == MENU_ID_INVALID)
 					ID = GetIDFromString(Item.Name);
-				if (ID != MENU_ID_INVALID)
+				if (ID != MENU_ID_INVALID
+						&& (ID != MENU_ID_SEPARATOR
+							|| (!pItemList->empty() && pItemList->back() != MENU_ID_SEPARATOR)))
 					pItemList->push_back(ID);
 			}
 		}
+		if (!pItemList->empty() && pItemList->back() == MENU_ID_SEPARATOR)
+			pItemList->pop_back();
 	}
 
 	return true;

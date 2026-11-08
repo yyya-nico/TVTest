@@ -402,8 +402,10 @@ bool CAppCore::SetChannel(int Space, int Channel, int ServiceID/* = -1*/, bool f
 
 		m_App.CoreEngine.SetServiceSelectInfo(&ServiceSel);
 
+		m_App.MainWindow.ShowChannelStatus(*pChInfo);
 		if (!pSourceFilter->SetChannelAndPlay(pChInfo->GetSpace(), pChInfo->GetChannelIndex())) {
 			m_App.AddLogRaw(CLogItem::LogType::Error, pSourceFilter->GetLastErrorText());
+			m_App.MainWindow.ClearChannelStatus();
 			m_App.ChannelManager.SetCurrentChannel(OldSpace, OldChannel);
 			return false;
 		}
@@ -748,6 +750,17 @@ bool CAppCore::SetServiceByID(WORD ServiceID, SetServiceFlag Flags)
 		}
 	}
 
+	bool fShowSelection = false;
+	if (pCurChInfo != nullptr && ServiceID != LibISDB::SERVICE_ID_INVALID) {
+		const CChannelList *pList = m_App.ChannelManager.GetCurrentChannelList();
+		const int Index = pList->FindByIndex(
+			pCurChInfo->GetSpace(), pCurChInfo->GetChannelIndex(), ServiceID);
+		if (const CChannelInfo *pTarget = pList->GetChannelInfo(Index)) {
+			m_App.MainWindow.ShowChannelStatus(*pTarget);
+			fShowSelection = true;
+		}
+	}
+
 	bool fResult;
 
 	if (ServiceSel.ServiceID == LibISDB::SERVICE_ID_INVALID) {
@@ -764,6 +777,8 @@ bool CAppCore::SetServiceByID(WORD ServiceID, SetServiceFlag Flags)
 		fResult = m_App.CoreEngine.SetService(ServiceSel);
 	}
 	if (!fResult) {
+		if (fShowSelection)
+			m_App.MainWindow.ClearChannelStatus();
 		m_App.AddLog(CLogItem::LogType::Error, TEXT("サービスを選択できません。"));
 		return false;
 	}

@@ -311,6 +311,8 @@ void CAppMain::Initialize()
 	m_FavoritesFileName = szModuleFileName;
 	m_FavoritesFileName.RenameExtension(TEXT(".tvfavorites"));
 
+	GeneralOptions.SetDriverDirectory(TEXT("BonDriver"));
+
 	const bool fExists = m_IniFileName.IsFileExists();
 	m_fFirstExecute = !fExists && CmdLineOptions.m_IniFileName.empty();
 	if (fExists) {
@@ -772,11 +774,36 @@ int CAppMain::Main(HINSTANCE hInstance, LPCTSTR pszCmdLine, int nCmdShow)
 	// Buffered paint の初期化
 	CBufferedPaint::Initialize();
 
-	// BonDriver の検索
-	{
+	m_fInitialSettings =
+		CmdLineOptions.m_fInitialSettings
+		|| (m_fFirstExecute && !Core.IsSilent() && !CmdLineOptions.m_fNoDriver
+			&& CmdLineOptions.m_DriverName.empty());
+
+	// 初期設定と BonDriver の検索
+	if (m_fInitialSettings) {
+		if (!CInitialSettings::Show(nullptr, DriverManager))
+			return 0;
+		GeneralOptions.SetDriverDirectory(TEXT("BonDriver"));
+		GeneralOptions.SetChanged();
+	} else {
 		String Directory;
-		CoreEngine.GetDriverDirectoryPath(&Directory);
-		DriverManager.Find(Directory.c_str());
+		if (CoreEngine.GetDriverDirectoryPath(&Directory))
+			DriverManager.Find(Directory.c_str());
+	}
+
+	if (m_fInitialSettings) {
+		VideoOptions.SetVideoRendererType(LibISDB::DirectShow::VideoRenderer::RendererType::EVR);
+		VideoOptions.SetChanged();
+	}
+
+	if (m_fFirstExecute) {
+		PWSTR pszRecordFolder;
+		if (::SHGetKnownFolderPath(FOLDERID_Videos, 0, nullptr, &pszRecordFolder) == S_OK
+				|| ::SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &pszRecordFolder) == S_OK) {
+			RecordOptions.SetSaveFolder(pszRecordFolder);
+			RecordOptions.SetChanged();
+			::CoTaskMemFree(pszRecordFolder);
+		}
 	}
 	// チューナー仕様定義の読み込み
 	{
@@ -808,35 +835,18 @@ int CAppMain::Main(HINSTANCE hInstance, LPCTSTR pszCmdLine, int nCmdShow)
 	if (StyleManager.IsUseDarkMenu())
 		SetAppAllowDarkMode(true);
 
-	// 初期設定ダイアログを表示するか
-	m_fInitialSettings =
-		CmdLineOptions.m_fInitialSettings
-		|| (m_fFirstExecute && CmdLineOptions.m_DriverName.empty());
-
 	GraphicsCore.Initialize();
 
 	String DriverFileName;
-
-	// 初期設定ダイアログの表示
-	if (m_fInitialSettings) {
-		CInitialSettings InitialSettings(&DriverManager);
-
-		if (!InitialSettings.Show(nullptr))
-			return 0;
-		DriverFileName = InitialSettings.GetDriverFileName();
-		GeneralOptions.SetDefaultDriverName(DriverFileName.c_str());
-		GeneralOptions.SetChanged();
-		VideoOptions.SetMpeg2DecoderName(InitialSettings.GetMpeg2DecoderName());
-		VideoOptions.SetH264DecoderName(InitialSettings.GetH264DecoderName());
-		VideoOptions.SetH265DecoderName(InitialSettings.GetH265DecoderName());
-		VideoOptions.SetVideoRendererType(InitialSettings.GetVideoRenderer());
-		VideoOptions.SetChanged();
-		RecordOptions.SetSaveFolder(InitialSettings.GetRecordFolder());
-		RecordOptions.SetChanged();
-	} else if (!CmdLineOptions.m_DriverName.empty()) {
+	if (!CmdLineOptions.m_DriverName.empty()) {
 		DriverFileName = CmdLineOptions.m_DriverName;
 	} else if (!CmdLineOptions.m_fNoDriver) {
 		GeneralOptions.GetFirstDriverName(&DriverFileName);
+		if (m_fInitialSettings
+				&& (DriverFileName.empty() || DriverManager.FindByFileName(DriverFileName.c_str()) < 0)) {
+			DriverFileName = DriverManager.GetDriverInfo(0)->GetFileName();
+			GeneralOptions.SetDefaultDriverName(DriverFileName.c_str());
+		}
 	}
 
 	// 各ウィンドウの初期化
@@ -1131,7 +1141,11 @@ int CAppMain::Main(HINSTANCE hInstance, LPCTSTR pszCmdLine, int nCmdShow)
 
 	ApplyEventInfoFont();
 
-	if (CmdLineOptions.m_fFullscreen)
+	const bool fStartInViewingMode =
+		!CmdLineOptions.m_fStandby && !CmdLineOptions.m_fMinimize
+		&& !CmdLineOptions.m_fNoView && !CmdLineOptions.m_fNoDirectShow
+		&& !CmdLineOptions.m_fShowProgramGuide;
+	if (CmdLineOptions.m_fFullscreen || fStartInViewingMode)
 		UICore.SetFullscreen(true);
 
 	// 初期チャンネルを設定する
@@ -1153,7 +1167,7 @@ int CAppMain::Main(HINSTANCE hInstance, LPCTSTR pszCmdLine, int nCmdShow)
 						TEXT("今すぐチャンネルスキャンを行いますか?"),
 						TEXT("チャンネルスキャンの確認"),
 						MB_YESNO | MB_ICONINFORMATION) == IDYES) {
-				ShowOptionDialog(MainWindow.GetHandle(), COptionDialog::PAGE_CHANNELSCAN);
+				ShowOptionDialog(UICore.GetDialogOwner(), COptionDialog::PAGE_CHANNELSCAN);
 			}
 		} else if (CmdLineOptions.IsChannelSpecified()) {
 			Core.SetCommandLineChannel(&CmdLineOptions);
@@ -1200,11 +1214,13 @@ int CAppMain::Main(HINSTANCE hInstance, LPCTSTR pszCmdLine, int nCmdShow)
 
 	if (CmdLineOptions.m_fHomeDisplay) {
 		UICore.DoCommandAsync(CM_HOMEDISPLAY);
-	} else if (CmdLineOptions.m_fChannelDisplay) {
+	} else if (CmdLineOptions.m_fChannelDisplay
+			|| (fStartInViewingMode && !CmdLineOptions.IsChannelSpecified()
+				&& !CmdLineOptions.m_fRecord && CoreEngine.IsTunerOpen())) {
 		UICore.DoCommandAsync(CM_CHANNELDISPLAY);
 	}
 
-	::SetFocus(MainWindow.GetHandle());
+	::SetFocus(UICore.GetFullscreen() ? MainWindow.GetVideoHostWindow() : MainWindow.GetHandle());
 
 	{
 		const HWND hwndForeground = ::GetForegroundWindow();

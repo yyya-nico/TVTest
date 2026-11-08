@@ -33,12 +33,6 @@ namespace TVTest
 		: public COptions
 	{
 	public:
-		enum class ChannelChangeType {
-			LogoAndText,
-			TextOnly,
-			LogoOnly,
-			TVTEST_ENUM_CLASS_TRAILER
-		};
 
 		enum class OSDType {
 			Channel,
@@ -66,8 +60,6 @@ namespace TVTest
 		int GetOpacity() const { return m_Opacity; }
 		const LOGFONT *GetOSDFont() const { return &m_OSDFont; }
 		int GetFadeTime() const { return m_FadeTime; }
-		ChannelChangeType GetChannelChangeType() const { return m_ChannelChangeType; }
-		LPCTSTR GetChannelChangeText() const { return m_ChannelChangeText.c_str(); }
 		bool GetLayeredWindow() const;
 		void OnDwmCompositionChanged();
 		bool IsOSDEnabled(OSDType Type) const;
@@ -94,8 +86,6 @@ namespace TVTest
 		LOGFONT m_OSDFont;
 		LOGFONT m_CurOSDFont;
 		int m_FadeTime = 3000;
-		ChannelChangeType m_ChannelChangeType = ChannelChangeType::LogoAndText;
-		String m_ChannelChangeText{TEXT("%channel-no% %channel-name%")};
 		unsigned int m_EnabledOSD;
 
 		bool m_fLayeredWindow = true;

@@ -746,7 +746,7 @@ bool CDisplayBase::SetVisible(bool fVisible)
 		if (m_pParentWindow != nullptr) {
 			RECT rc;
 			m_pParentWindow->GetClientRect(&rc);
-			m_pDisplayView->SetPosition(&rc);
+			SetPosition(&rc);
 		}
 		m_pDisplayView->SetDisplayVisible(true);
 		::BringWindowToTop(m_pDisplayView->GetHandle());
@@ -780,22 +780,25 @@ void CDisplayBase::AdjustPosition()
 	if (m_pParentWindow != nullptr && m_pDisplayView != nullptr && m_fVisible) {
 		RECT rc;
 		m_pParentWindow->GetClientRect(&rc);
-		m_pDisplayView->SetPosition(&rc);
+		SetPosition(&rc);
 	}
 }
 
 
 void CDisplayBase::SetPosition(int Left, int Top, int Width, int Height)
 {
-	if (m_pDisplayView != nullptr)
-		m_pDisplayView->SetPosition(Left, Top, Width, Height);
+	const RECT rc = {Left, Top, Left + Width, Top + Height};
+	SetPosition(&rc);
 }
 
 
 void CDisplayBase::SetPosition(const RECT *pRect)
 {
-	if (m_pDisplayView != nullptr)
-		m_pDisplayView->SetPosition(pRect);
+	if (m_pDisplayView != nullptr) {
+		RECT rc = *pRect;
+		m_pDisplayView->AdjustDisplayRect(&rc);
+		m_pDisplayView->SetPosition(&rc);
+	}
 }
 
 

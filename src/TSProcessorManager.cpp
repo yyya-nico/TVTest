@@ -643,9 +643,9 @@ void CTSProcessorManager::OpenFilter(
 			}
 		} else {
 			if (!!(FilterOpenFlags & FilterOpenFlag::NotifyError)) {
-				App.UICore.GetSkin()->ShowNotificationBar(
+				App.MainWindow.PostNotification(
 					TEXT("TSフィルターをオープンできません。"),
-					CNotificationBar::MessageType::Error, 6000);
+					CNotificationBarOptions::NOTIFY_TSPROCESSORERROR, CNotificationBar::MessageType::Error);
 			}
 
 			if (!(FilterOpenFlags & FilterOpenFlag::NoUI)) {

@@ -117,6 +117,8 @@ namespace TVTest
 		bool WriteSettings(CSettings &Settings);
 		void ShowPanel(bool fShow);
 		void SetStatusBarVisible(bool fVisible);
+		void ShowChannelStatus(const CChannelInfo &Channel);
+		void ClearChannelStatus();
 		bool GetStatusBarVisible() const { return m_fShowStatusBar; }
 		bool ShowStatusBarItem(int ID, bool fShow);
 		void OnStatusBarInitialized();
@@ -344,6 +346,7 @@ namespace TVTest
 			bool SetPanelPlace(CPanelFrame::DockingPlace Place);
 			CPanelFrame::DockingPlace GetPanelPlace() const { return m_PanelPlace; }
 			void HideAllBars();
+			void ShowCloseButton(bool fShow);
 			void OnRButtonUp();
 			void OnMButtonUp();
 			void OnMouseMove();
@@ -396,6 +399,7 @@ namespace TVTest
 			bool m_fShowEventInfoOSD = false;
 
 			bool OnCreate();
+			void UpdateCloseButtonTheme();
 			void OnMouseCommand(int Command);
 			void OnLButtonDoubleClick();
 			void ShowCursor(bool fShow);
@@ -498,6 +502,7 @@ namespace TVTest
 		CViewWindowEventHandler m_ViewWindowEventHandler{this};
 		CFullscreen m_Fullscreen{*this};
 		CNotificationBar m_NotificationBar;
+		CNotificationBar m_TSProcessorNotification{true};
 		std::vector<NotificationInfo> m_PendingNotificationList;
 		MutexLock m_NotificationLock;
 		CCommandEventListener m_CommandEventListener{this};
@@ -508,7 +513,7 @@ namespace TVTest
 		MainWindowTheme m_Theme;
 		bool m_fAllowDarkMode = false;
 		bool m_fDarkMode = false;
-		bool m_fShowStatusBar = true;
+		bool m_fShowStatusBar = false;
 		bool m_fShowTitleBar = true;
 		bool m_fCustomTitleBar = true;
 		bool m_fPopupTitleBar = true;
@@ -603,6 +608,8 @@ namespace TVTest
 		CChannelInput m_ChannelInput;
 
 		bool m_fNeedEventInfoOSD = false;
+		WORD m_LastProgramStatusEventID = LibISDB::EVENT_ID_INVALID;
+		String m_LastProgramStatusEventName;
 
 		CEpgCaptureEventHandler m_EpgCaptureEventHandler{this};
 
@@ -700,6 +707,8 @@ namespace TVTest
 		bool OnClose(HWND hwnd);
 		void OnRecordingStateChanged();
 		void OnEventChanged();
+		void UpdateProgramStatus();
+		void ShowChannelStatusText(LPCTSTR pszChannelName, LPCTSTR pszEventName, DWORD Duration);
 		bool AutoFitWindowToVideo();
 		bool SetPanAndScan(int Command);
 		void LockLayout();
@@ -712,7 +721,6 @@ namespace TVTest
 		void ShowPopupStatusBar(bool fShow);
 		void ShowPopupSideBar(bool fShow);
 		void ShowCursor(bool fShow);
-		void ShowChannelOSD();
 		void SetWindowVisible();
 		void ShowFloatingWindows(bool fShow, bool fNoProgramGuide = false);
 		void DrawCustomFrame(bool fActive);

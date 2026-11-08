@@ -64,7 +64,8 @@ bool CNotificationBar::Initialize(HINSTANCE hinst)
 }
 
 
-CNotificationBar::CNotificationBar()
+CNotificationBar::CNotificationBar(bool fCentered)
+	: m_fCentered(fCentered)
 {
 	GetSystemFont(DrawUtil::FontType::Message, &m_StyleFont);
 	m_StyleFont.LogFont.lfHeight = ::MulDiv(m_StyleFont.LogFont.lfHeight, 12, 10);
@@ -110,56 +111,78 @@ void CNotificationBar::SetTheme(const Theme::CThemeManager *pThemeManager)
 }
 
 
-bool CNotificationBar::Show(LPCTSTR pszText, MessageType Type, DWORD Timeout, bool fSkippable)
+bool CNotificationBar::Show(
+	LPCTSTR pszText, MessageType Type, DWORD Timeout, bool fSkippable, bool fChannel)
 {
-	if (m_hwnd == nullptr || pszText == nullptr)
+	if (m_hwnd == nullptr || IsStringEmpty(pszText))
 		return false;
 
-	MessageInfo Info;
-	Info.Text = pszText;
-	Info.Type = Type;
-	Info.Timeout = Timeout;
-	Info.fSkippable = fSkippable;
-	m_MessageQueue.push_back(Info);
+	const bool fReplaceLast = !m_MessageQueue.empty()
+		&& m_MessageQueue.back().fSkippable && !m_MessageQueue.back().fChannel;
+	bool fChanged = m_MessageQueue.empty();
 
-	EndTimer(TIMER_ID_SHOWANIMATION);
-	EndTimer(TIMER_ID_FADEANIMATION);
-
-	RECT rc;
-	GetBarPosition(&rc);
-
-	if (!GetVisible()) {
-		while (m_MessageQueue.size() > 1)
+	if (fChannel) {
+		if (!m_MessageQueue.empty() && m_MessageQueue.front().fChannel)
 			m_MessageQueue.pop_front();
-		::BringWindowToTop(m_hwnd);
-		if (m_fAnimate)
-			GetAnimatedBarPosition(&rc, 0, SHOW_ANIMATION_COUNT);
-		SetPosition(&rc);
-		SetVisible(true);
-		Update();
-		if (m_fAnimate) {
-			m_TimerCount = 0;
-			BeginTimer(TIMER_ID_SHOWANIMATION, SHOW_ANIMATION_INTERVAL);
-		} else if (Timeout != 0) {
-			BeginTimer(TIMER_ID_HIDE, Timeout);
-		}
+		m_MessageQueue.push_front({pszText, Type, Timeout, fSkippable, true});
+		fChanged = true;
 	} else {
-		if (m_MessageQueue.size() > 1) {
-			auto itr = m_MessageQueue.begin() + (m_MessageQueue.size() - 2);
-			if (itr->fSkippable) {
-				m_MessageQueue.erase(itr);
-				if (m_MessageQueue.size() == 1)
-					EndTimer(TIMER_ID_HIDE);
-			}
+		if (fReplaceLast) {
+			m_MessageQueue.pop_back();
+			fChanged = m_MessageQueue.empty();
 		}
-		SetPosition(&rc);
-		Redraw();
-		Timeout = m_MessageQueue.front().Timeout;
-		if (Timeout != 0 && !IsTimerEnabled(TIMER_ID_HIDE))
-			BeginTimer(TIMER_ID_HIDE, Timeout);
+		m_MessageQueue.push_back({pszText, Type, Timeout, fSkippable, false});
 	}
 
+	if (fChanged)
+		UpdateBar();
 	return true;
+}
+
+
+void CNotificationBar::ClearChannel()
+{
+	if (!m_MessageQueue.empty() && m_MessageQueue.front().fChannel) {
+		m_MessageQueue.pop_front();
+		UpdateBar();
+	}
+}
+
+
+void CNotificationBar::SetHost(HWND hwndParent)
+{
+	if (m_hwnd != nullptr && GetParent() != hwndParent) {
+		SetParent(hwndParent);
+		AdjustPosition();
+	}
+}
+
+
+void CNotificationBar::AdjustPosition()
+{
+	if (GetVisible()) {
+		RECT rc;
+		GetBarPosition(&rc);
+		SetPosition(&rc);
+		::BringWindowToTop(m_hwnd);
+	}
+}
+
+
+void CNotificationBar::UpdateBar()
+{
+	if (m_MessageQueue.empty()) {
+		Hide();
+		return;
+	}
+	RECT rc;
+	GetBarPosition(&rc);
+	SetPosition(&rc);
+	::BringWindowToTop(m_hwnd);
+	SetVisible(true);
+	Invalidate();
+	Update();
+	SetHideTimer();
 }
 
 
@@ -169,21 +192,8 @@ bool CNotificationBar::Hide()
 		return false;
 
 	EndAllTimers();
-
-	if (m_fAnimate) {
-		RECT rc;
-
-		GetAnimatedBarPosition(&rc, FADE_ANIMATION_COUNT - 1, FADE_ANIMATION_COUNT);
-		SetPosition(&rc);
-		Redraw();
-		m_TimerCount = 0;
-		if (BeginTimer(TIMER_ID_FADEANIMATION, FADE_ANIMATION_INTERVAL))
-			return true;
-	}
-
 	SetVisible(false);
 	m_MessageQueue.clear();
-
 	return true;
 }
 
@@ -205,20 +215,60 @@ void CNotificationBar::CalcBarHeight()
 	const int TextHeight = FontHeight + m_Style.TextMargin.Vert();
 
 	m_BarHeight = std::max(IconHeight, TextHeight) + m_Style.Padding.Vert();
+	m_ChannelNameHeight = Style::GetFontHeight(
+		m_hwnd, m_ChannelNameFont.GetHandle(), m_Style.TextExtraHeight);
+	m_ProgramTitleHeight = Style::GetFontHeight(
+		m_hwnd, m_ProgramTitleFont.GetHandle(), m_Style.TextExtraHeight);
+}
+
+
+int CNotificationBar::GetBarHeight() const
+{
+	if (!m_MessageQueue.empty() && m_MessageQueue.front().fChannel) {
+		return m_Style.ChannelPadding.Vert() + m_ChannelNameHeight
+			+ (m_MessageQueue.front().Text.find(TEXT('\n')) != String::npos ? m_ProgramTitleHeight : 0);
+	}
+	return m_BarHeight;
 }
 
 
 void CNotificationBar::GetBarPosition(RECT *pRect) const
 {
 	::GetClientRect(::GetParent(m_hwnd), pRect);
-	pRect->bottom = m_BarHeight;
-}
+	if (!m_fCentered) {
+		pRect->bottom = GetBarHeight();
+		return;
+	}
 
+	const int HostWidth = pRect->right - pRect->left;
+	const int HostHeight = pRect->bottom - pRect->top;
+	const int Margin = m_pStyleScaling->LogicalPixelsToPhysicalPixels(16);
+	const int MaxWidth = m_pStyleScaling->LogicalPixelsToPhysicalPixels(640);
+	const int Width = std::min(std::max(0, HostWidth - Margin * 2), MaxWidth);
+	int Height = GetBarHeight();
 
-void CNotificationBar::GetAnimatedBarPosition(RECT *pRect, int Frame, int NumFrames) const
-{
-	GetBarPosition(pRect);
-	pRect->bottom = (Frame + 1) * m_BarHeight / NumFrames;
+	if (!m_MessageQueue.empty()) {
+		const HDC hdc = ::GetDC(m_hwnd);
+		if (hdc != nullptr) {
+			const HFONT hOldFont = SelectFont(hdc, m_Font.GetHandle());
+			const int TextWidth = Width - m_Style.Padding.Horz() - m_Style.TextMargin.Horz()
+				- m_Style.IconSize.Width - m_Style.IconMargin.Horz();
+			RECT rcText = {0, 0, std::max(1, TextWidth), 0};
+			::DrawText(
+				hdc, m_MessageQueue.front().Text.c_str(), -1, &rcText,
+				DT_LEFT | DT_NOPREFIX | DT_WORDBREAK | DT_CALCRECT);
+			::SelectObject(hdc, hOldFont);
+			::ReleaseDC(m_hwnd, hdc);
+			Height = std::max(Height, static_cast<int>(rcText.bottom) + m_Style.Padding.Vert()
+				+ m_Style.TextMargin.Vert() + m_Style.TextExtraHeight);
+		}
+	}
+	Height = std::min(Height, std::max(0, HostHeight - Margin * 2));
+
+	pRect->left = (HostWidth - Width) / 2;
+	pRect->top = (HostHeight - Height) / 2;
+	pRect->right = pRect->left + Width;
+	pRect->bottom = pRect->top + Height;
 }
 
 
@@ -242,7 +292,6 @@ LRESULT CNotificationBar::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM 
 			InitializeUI();
 
 			InitializeTimer(hwnd);
-			m_TimerCount = 0;
 		}
 		return 0;
 
@@ -263,27 +312,44 @@ LRESULT CNotificationBar::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM 
 			if (!m_MessageQueue.empty()) {
 				const MessageInfo &Info = m_MessageQueue.front();
 
-				Style::Subtract(&rc, m_Style.Padding);
-				if (rc.left < rc.right) {
-					const int TypeIndex = static_cast<int>(Info.Type);
-
-					if (TypeIndex >= 0 && TypeIndex < lengthof(m_Icons) && m_Icons[TypeIndex]) {
-						rc.left += m_Style.IconMargin.Left;
-						::DrawIconEx(
-							ps.hdc,
-							rc.left,
-							rc.top + m_Style.IconMargin.Top +
-							((rc.bottom - rc.top) - m_Style.IconMargin.Vert() - m_Style.IconSize.Height) / 2,
-							m_Icons[TypeIndex],
-							m_Style.IconSize.Width, m_Style.IconSize.Height,
-							0, nullptr, DI_NORMAL);
-						rc.left += m_Style.IconSize.Width + m_Style.IconMargin.Right;
+				if (Info.fChannel) {
+					Style::Subtract(&rc, m_Style.ChannelPadding);
+					const auto Break = Info.Text.find(TEXT('\n'));
+					constexpr UINT Format = DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS;
+					RECT rcName = rc;
+					rcName.bottom = rcName.top + m_ChannelNameHeight;
+					const String Name = Info.Text.substr(0, Break);
+					const COLORREF TextColor = m_TextColor[static_cast<int>(Info.Type)];
+					DrawUtil::DrawText(ps.hdc, Name.c_str(), rcName, Format, &m_ChannelNameFont, TextColor);
+					if (Break != String::npos) {
+						rc.top = rcName.bottom;
+						DrawUtil::DrawText(
+							ps.hdc, Info.Text.c_str() + Break + 1, rc, Format, &m_ProgramTitleFont, TextColor);
 					}
-					Style::Subtract(&rc, m_Style.TextMargin);
-					DrawUtil::DrawText(
-						ps.hdc, Info.Text.c_str(), rc,
-						DT_SINGLELINE | DT_LEFT | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS,
-						&m_Font, m_TextColor[TypeIndex]);
+				} else {
+					Style::Subtract(&rc, m_Style.Padding);
+					if (rc.left < rc.right) {
+						const int TypeIndex = static_cast<int>(Info.Type);
+
+						if (TypeIndex >= 0 && TypeIndex < lengthof(m_Icons) && m_Icons[TypeIndex]) {
+							rc.left += m_Style.IconMargin.Left;
+							::DrawIconEx(
+								ps.hdc,
+								rc.left,
+								rc.top + m_Style.IconMargin.Top +
+								((rc.bottom - rc.top) - m_Style.IconMargin.Vert() - m_Style.IconSize.Height) / 2,
+								m_Icons[TypeIndex],
+								m_Style.IconSize.Width, m_Style.IconSize.Height,
+								0, nullptr, DI_NORMAL);
+							rc.left += m_Style.IconSize.Width + m_Style.IconMargin.Right;
+						}
+						Style::Subtract(&rc, m_Style.TextMargin);
+						DrawUtil::DrawText(
+							ps.hdc, Info.Text.c_str(), rc,
+							DT_NOPREFIX | DT_END_ELLIPSIS
+								| (m_fCentered ? DT_CENTER | DT_WORDBREAK : DT_LEFT | DT_SINGLELINE | DT_VCENTER),
+							&m_Font, m_TextColor[TypeIndex]);
+					}
 				}
 			}
 
@@ -292,51 +358,9 @@ LRESULT CNotificationBar::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM 
 		return 0;
 
 	case WM_TIMER:
-		switch (wParam) {
-		case TIMER_ID_SHOWANIMATION:
-			{
-				RECT rc;
-
-				GetAnimatedBarPosition(&rc, m_TimerCount + 1, SHOW_ANIMATION_COUNT);
-				SetPosition(&rc);
-				Update();
-				if (m_TimerCount < SHOW_ANIMATION_COUNT - 2) {
-					m_TimerCount++;
-				} else {
-					EndTimer(TIMER_ID_SHOWANIMATION);
-					m_TimerCount = 0;
-					SetHideTimer();
-				}
-			}
-			break;
-
-		case TIMER_ID_FADEANIMATION:
-			if (m_TimerCount < FADE_ANIMATION_COUNT - 1) {
-				RECT rc;
-
-				GetAnimatedBarPosition(
-					&rc, FADE_ANIMATION_COUNT - 2 - m_TimerCount, FADE_ANIMATION_COUNT);
-				SetPosition(&rc);
-				Update();
-				m_TimerCount++;
-			} else {
-				SetVisible(false);
-				EndTimer(TIMER_ID_FADEANIMATION);
-				m_TimerCount = 0;
-				m_MessageQueue.clear();
-			}
-			break;
-
-		case TIMER_ID_HIDE:
-			if (!m_MessageQueue.empty())
-				m_MessageQueue.pop_front();
-			if (m_MessageQueue.empty()) {
-				Hide();
-			} else {
-				Redraw();
-				SetHideTimer();
-			}
-			break;
+		if (wParam == TIMER_ID_HIDE && !m_MessageQueue.empty()) {
+			m_MessageQueue.pop_front();
+			UpdateBar();
 		}
 		return 0;
 
@@ -372,6 +396,12 @@ void CNotificationBar::ApplyStyle()
 		return;
 
 	CreateDrawFont(m_StyleFont, &m_Font);
+	Style::Font Font = m_StyleFont;
+	Font.Size.Value = ::MulDiv(m_StyleFont.Size.Value, 110, 100);
+	CreateDrawFont(Font, &m_ChannelNameFont);
+	Font.Size.Value = ::MulDiv(m_StyleFont.Size.Value, 155, 100);
+	Font.LogFont.lfWeight = std::max<LONG>(Font.LogFont.lfWeight, FW_BOLD);
+	CreateDrawFont(Font, &m_ProgramTitleFont);
 
 	/*
 	m_Icons[static_cast<int>(MessageType::Info)].Attach(
@@ -404,6 +434,7 @@ void CNotificationBar::NotificationBarStyle::NormalizeStyle(
 	const Style::CStyleScaling *pStyleScaling)
 {
 	pStyleScaling->ToPixels(&Padding);
+	pStyleScaling->ToPixels(&ChannelPadding);
 	pStyleScaling->ToPixels(&IconSize);
 	pStyleScaling->ToPixels(&IconMargin);
 	pStyleScaling->ToPixels(&TextMargin);

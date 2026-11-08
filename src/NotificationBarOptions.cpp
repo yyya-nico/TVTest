@@ -54,13 +54,16 @@ CNotificationBarOptions::~CNotificationBarOptions()
 
 bool CNotificationBarOptions::ReadSettings(CSettings &Settings)
 {
-	Settings.Read(TEXT("EnableNotificationBar"), &m_fEnableNotificationBar);
 	Settings.Read(TEXT("NotificationBarDuration"), &m_NotificationBarDuration);
 	bool f;
 	if (Settings.Read(TEXT("NotifyEventName"), &f))
 		EnableNotify(NOTIFY_EVENTNAME, f);
 	if (Settings.Read(TEXT("NotifyTSProcessorError"), &f))
 		EnableNotify(NOTIFY_TSPROCESSORERROR, f);
+	if (Settings.Read(TEXT("EnableNotificationBar"), &f) && !f) {
+		m_NotificationBarFlags = 0;
+		m_fChanged = true;
+	}
 
 	if (StyleUtil::ReadFontSettings(
 				Settings, TEXT("NotificationBarFont"), &m_NotificationBarFont, true, &f)) {
@@ -74,7 +77,7 @@ bool CNotificationBarOptions::ReadSettings(CSettings &Settings)
 
 bool CNotificationBarOptions::WriteSettings(CSettings &Settings)
 {
-	Settings.Write(TEXT("EnableNotificationBar"), m_fEnableNotificationBar);
+	Settings.DeleteValue(TEXT("EnableNotificationBar"));
 	Settings.Write(TEXT("NotificationBarDuration"), m_NotificationBarDuration);
 	Settings.Write(TEXT("NotifyEventName"), (m_NotificationBarFlags & NOTIFY_EVENTNAME) != 0);
 	Settings.Write(TEXT("NotifyTSProcessorError"), (m_NotificationBarFlags & NOTIFY_TSPROCESSORERROR) != 0);
@@ -85,17 +88,9 @@ bool CNotificationBarOptions::WriteSettings(CSettings &Settings)
 }
 
 
-bool CNotificationBarOptions::Create(HWND hwndOwner)
-{
-	return CreateDialogWindow(
-		hwndOwner,
-		GetAppClass().GetResourceInstance(), MAKEINTRESOURCE(IDD_OPTIONS_NOTIFICATIONBAR));
-}
-
-
 bool CNotificationBarOptions::IsNotifyEnabled(unsigned int Type) const
 {
-	return m_fEnableNotificationBar && (m_NotificationBarFlags & Type) != 0;
+	return (m_NotificationBarFlags & Type) != 0;
 }
 
 
@@ -113,24 +108,17 @@ INT_PTR CNotificationBarOptions::DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LP
 	switch (uMsg) {
 	case WM_INITDIALOG:
 		{
-			DlgCheckBox_Check(hDlg, IDC_NOTIFICATIONBAR_ENABLE, m_fEnableNotificationBar);
 			DlgCheckBox_Check(hDlg, IDC_NOTIFICATIONBAR_NOTIFYEVENTNAME, (m_NotificationBarFlags & NOTIFY_EVENTNAME) != 0);
 			DlgCheckBox_Check(hDlg, IDC_NOTIFICATIONBAR_NOTIFYTSPROCESSORERROR, (m_NotificationBarFlags & NOTIFY_TSPROCESSORERROR) != 0);
 			::SetDlgItemInt(hDlg, IDC_NOTIFICATIONBAR_DURATION, m_NotificationBarDuration / 1000, FALSE);
 			DlgUpDown_SetRange(hDlg, IDC_NOTIFICATIONBAR_DURATION_UPDOWN, 1, 60);
 			m_CurNotificationBarFont = m_NotificationBarFont;
 			StyleUtil::SetFontInfoItem(hDlg, IDC_NOTIFICATIONBAR_FONT_INFO, m_CurNotificationBarFont);
-			EnableDlgItems(hDlg, IDC_NOTIFICATIONBAR_FIRST, IDC_NOTIFICATIONBAR_LAST, m_fEnableNotificationBar);
 		}
 		return TRUE;
 
 	case WM_COMMAND:
 		switch (LOWORD(wParam)) {
-		case IDC_NOTIFICATIONBAR_ENABLE:
-			EnableDlgItemsSyncCheckBox(
-				hDlg, IDC_NOTIFICATIONBAR_FIRST, IDC_NOTIFICATIONBAR_LAST, IDC_NOTIFICATIONBAR_ENABLE);
-			return TRUE;
-
 		case IDC_NOTIFICATIONBAR_FONT_CHOOSE:
 			if (StyleUtil::ChooseStyleFont(hDlg, &m_CurNotificationBarFont))
 				StyleUtil::SetFontInfoItem(hDlg, IDC_NOTIFICATIONBAR_FONT_INFO, m_CurNotificationBarFont);
@@ -142,8 +130,6 @@ INT_PTR CNotificationBarOptions::DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LP
 		switch (reinterpret_cast<LPNMHDR>(lParam)->code) {
 		case PSN_APPLY:
 			{
-				m_fEnableNotificationBar =
-					DlgCheckBox_IsChecked(hDlg, IDC_NOTIFICATIONBAR_ENABLE);
 				EnableNotify(
 					NOTIFY_EVENTNAME,
 					DlgCheckBox_IsChecked(hDlg, IDC_NOTIFICATIONBAR_NOTIFYEVENTNAME));

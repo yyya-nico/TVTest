@@ -83,7 +83,6 @@ static const CSideBar::SideBarItem ItemList[] = {
 	{CM_OPTIONS,                19},
 	{CM_STREAMINFO,             20},
 	{CM_SPDIF_TOGGLE,           21},
-	{CM_HOMEDISPLAY,            22},
 	{CM_CHANNELDISPLAY,         23},
 	{CM_1SEGMODE,               24},
 	{CM_CHANNELNO_1,            25},

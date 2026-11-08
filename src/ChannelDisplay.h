@@ -79,11 +79,14 @@ namespace TVTest
 		void SetLogoManager(CLogoManager *pLogoManager);
 		void SetEventHandler(CChannelDisplayEventHandler *pEventHandler);
 		bool SetSelect(LPCTSTR pszDriverFileName, const CChannelInfo *pChannelInfo);
+		void RefreshProgramInfo();
 		bool SetFont(const Style::Font &Font, bool fAutoSize);
 
 		static bool Initialize(HINSTANCE hinst);
 
 	private:
+		void AdjustDisplayRect(RECT *pRect) const override;
+
 		class CTuner
 		{
 		public:

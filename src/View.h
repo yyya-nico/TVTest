@@ -99,6 +99,7 @@ namespace TVTest
 		CEventHandler *m_pEventHandler = nullptr;
 
 		virtual bool OnVisibleChange(bool fVisible);
+		virtual void AdjustDisplayRect(RECT *pRect) const {}
 		virtual bool GetCloseButtonRect(RECT *pRect) const;
 		bool CloseButtonHitTest(int x, int y) const;
 		void DrawCloseButton(HDC hdc) const;

@@ -66,8 +66,8 @@ bool COperationOptions::ReadSettings(CSettings &Settings)
 		CM_WHEEL_VOLUME,
 		CM_WHEEL_CHANNEL,
 		CM_WHEEL_AUDIO,
-		CM_WHEEL_ZOOM,
-		CM_WHEEL_ASPECTRATIO,
+		0,
+		0,
 	};
 	String Command;
 	if (Settings.Read(TEXT("WheelCommand"), &Command)) {
