@@ -5453,7 +5453,7 @@ LRESULT CMainWindow::CFullscreen::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam,
 		m_MainWindow.m_NotificationBar.AdjustPosition();
 		m_MainWindow.m_TSProcessorNotification.AdjustPosition();
 		if (const HWND hwndClose = ::GetDlgItem(hwnd, CM_CLOSE)) {
-			const int StatusBarHeight = m_pStyleScaling->LogicalPixelsToPhysicalPixels(78);
+			const int StatusBarHeight = m_pStyleScaling->LogicalPixelsToPhysicalPixels(62);
 			const int Margin = m_pStyleScaling->LogicalPixelsToPhysicalPixels(32);
 			const int Width = m_pStyleScaling->LogicalPixelsToPhysicalPixels(72);
 			const int Height = m_pStyleScaling->LogicalPixelsToPhysicalPixels(32);
