@@ -403,7 +403,12 @@ bool CAppCore::SetChannel(int Space, int Channel, int ServiceID/* = -1*/, bool f
 		m_App.CoreEngine.SetServiceSelectInfo(&ServiceSel);
 
 		m_App.MainWindow.ShowChannelStatus(*pChInfo);
-		if (!pSourceFilter->SetChannelAndPlay(pChInfo->GetSpace(), pChInfo->GetChannelIndex())) {
+		auto *pViewer = m_App.CoreEngine.GetFilter<LibISDB::ViewerFilter>();
+		const bool fBlankVideo = pViewer != nullptr && pViewer->BeginChannelChange();
+		const bool fTuned = pSourceFilter->SetChannelAndPlay(pChInfo->GetSpace(), pChInfo->GetChannelIndex());
+		if (fBlankVideo)
+			pViewer->EndChannelChange(fTuned);
+		if (!fTuned) {
 			m_App.AddLogRaw(CLogItem::LogType::Error, pSourceFilter->GetLastErrorText());
 			m_App.MainWindow.ClearChannelStatus();
 			m_App.ChannelManager.SetCurrentChannel(OldSpace, OldChannel);
@@ -763,6 +768,10 @@ bool CAppCore::SetServiceByID(WORD ServiceID, SetServiceFlag Flags)
 
 	bool fResult;
 
+	auto *pViewer = m_App.CoreEngine.GetFilter<LibISDB::ViewerFilter>();
+	const bool fBlankVideo =
+		!(Flags & SetServiceFlag::NoChangeCurrentServiceID)
+		&& pViewer != nullptr && pViewer->BeginChannelChange();
 	if (ServiceSel.ServiceID == LibISDB::SERVICE_ID_INVALID) {
 		m_App.AddLog(TEXT("デフォルトのサービスを選択します..."));
 		fResult = m_App.CoreEngine.SetService(ServiceSel);
@@ -776,6 +785,8 @@ bool CAppCore::SetServiceByID(WORD ServiceID, SetServiceFlag Flags)
 			m_App.AddLog(TEXT("サービスを選択します(SID {})..."), ServiceSel.ServiceID);
 		fResult = m_App.CoreEngine.SetService(ServiceSel);
 	}
+	if (fBlankVideo)
+		pViewer->EndChannelChange(fResult);
 	if (!fResult) {
 		if (fShowSelection)
 			m_App.MainWindow.ClearChannelStatus();
