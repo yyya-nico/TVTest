@@ -67,7 +67,6 @@ static const CSideBar::SideBarItem ItemList[] = {
 	{CM_ASPECTRATIO_WINDOWBOX,  3},
 	{CM_ASPECTRATIO_PILLARBOX,  4},
 	{CM_ASPECTRATIO_4x3,        5},
-	{CM_FULLSCREEN,             6},
 	{CM_ALWAYSONTOP,            7},
 	{CM_DISABLEVIEWER,          8},
 	{CM_CAPTURE,                9},
@@ -111,7 +110,6 @@ static const int DefaultItemList[] = {
 	CM_ZOOM_200,
 #endif
 	0,
-	CM_FULLSCREEN,
 	CM_ALWAYSONTOP,
 	CM_DISABLEVIEWER,
 	0,

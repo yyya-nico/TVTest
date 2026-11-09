@@ -391,12 +391,12 @@ static bool GetIniEntry(LPCWSTR pszText, CCommandLineOptions::IniEntry *pEntry)
 	/chi            チャンネルインデックス
 	/chspace        チューニング空間 (e.g. /chspace 1)
 	/d              ドライバの指定 (e.g. /d BonDriver.dll)
-	/f /fullscreen  フルスクリーン
+	/f /fullscreen  互換性のため受け付ける（視聴画面は常に全画面表示）
 	/ini            INIファイル名
 	/init           初期設定ダイアログを表示する
 	/inikey         INIファイルの値を設定
 	/log            終了時にログを保存する
-	/max            最大化状態で起動
+	/max            互換性のため受け付ける
 	/min            最小化状態で起動
 	/tray           起動時にタスクトレイに格納
 	/posx           ウィンドウの左位置の指定
@@ -463,8 +463,6 @@ void CCommandLineOptions::Parse(LPCWSTR pszCmdLine)
 					&& !Args.GetOption(TEXT("epgonly"), &m_fProgramGuideOnly)
 					&& !Args.GetOption(TEXT("epgspace"), &m_ProgramGuideSpace)
 					&& !Args.GetOption(TEXT("epgtuner"), &m_ProgramGuideTuner)
-					&& !Args.GetOption(TEXT("f"), &m_fFullscreen)
-					&& !Args.GetOption(TEXT("fullscreen"), &m_fFullscreen)
 					&& !Args.GetOption(TEXT("h264"), &m_fH264)
 					&& !Args.GetOption(TEXT("h265"), &m_fH265)
 					&& !Args.GetOption(TEXT("height"), &m_WindowHeight)
@@ -473,7 +471,6 @@ void CCommandLineOptions::Parse(LPCWSTR pszCmdLine)
 					&& !Args.GetOption(TEXT("init"), &m_fInitialSettings)
 					&& !Args.GetOption(TEXT("jumplist"), &m_fJumpList)
 					&& !Args.GetOption(TEXT("log"), &m_fSaveLog)
-					&& !Args.GetOption(TEXT("max"), &m_fMaximize)
 					&& !Args.GetOption(TEXT("min"), &m_fMinimize)
 					&& !Args.GetOption(TEXT("mpeg2"), &m_fMpeg2)
 					&& !Args.GetOption(TEXT("mute"), &m_fMute)
@@ -509,7 +506,9 @@ void CCommandLineOptions::Parse(LPCWSTR pszCmdLine)
 					&& !Args.GetOption(TEXT("tsid"), &m_TransportStreamID)
 					&& !Args.GetOption(TEXT("volume"), &m_Volume)
 					&& !Args.GetOption(TEXT("width"), &m_WindowWidth)) {
-				if (Args.IsOption(TEXT("inikey"))) {
+				if (Args.IsOption(TEXT("f")) || Args.IsOption(TEXT("fullscreen")) || Args.IsOption(TEXT("max"))) {
+					// These switches are accepted for compatibility. Viewing is always fullscreen.
+				} else if (Args.IsOption(TEXT("inikey"))) {
 					if (Args.Next()) {
 						IniEntry Entry;
 						if (GetIniEntry(Args.GetText(), &Entry))

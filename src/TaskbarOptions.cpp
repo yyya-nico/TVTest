@@ -31,7 +31,6 @@ namespace TVTest
 
 
 const int CTaskbarOptions::m_DefaultTaskList[] = {
-	CM_FULLSCREEN,
 	CM_DISABLEVIEWER,
 	CM_PROGRAMGUIDE,
 };

@@ -100,7 +100,6 @@ namespace TVTest
 		bool SelectPanAndScanPreset(CCommandManager::InvokeParameters &Params);
 		bool PanAndScanOptions(CCommandManager::InvokeParameters &Params);
 		bool ToggleFrameCut(CCommandManager::InvokeParameters &Params);
-		bool ToggleFullscreen(CCommandManager::InvokeParameters &Params);
 		bool ToggleAlwaysOnTop(CCommandManager::InvokeParameters &Params);
 
 		bool VolumeUpDown(CCommandManager::InvokeParameters &Params);

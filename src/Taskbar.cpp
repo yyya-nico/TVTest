@@ -35,7 +35,6 @@ namespace TVTest
 
 const CTaskbarManager::CommandIconInfo CTaskbarManager::m_CommandIconList[] =
 {
-	{CM_FULLSCREEN,    IDI_TASK_FULLSCREEN},
 	{CM_DISABLEVIEWER, IDI_TASK_DISABLEVIEWER},
 	{CM_PROGRAMGUIDE,  IDI_TASK_PROGRAMGUIDE},
 };
@@ -120,7 +119,6 @@ bool CTaskbarManager::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam)
 		}
 
 		static const int ButtonList[] = {
-			CM_FULLSCREEN,
 			CM_DISABLEVIEWER,
 			CM_PROGRAMGUIDE,
 		};

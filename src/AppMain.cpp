@@ -876,8 +876,6 @@ int CAppMain::Main(HINSTANCE hInstance, LPCTSTR pszCmdLine, int nCmdShow)
 	CChannelDisplay::Initialize(m_hInst);
 
 	// ウィンドウ位置とサイズの設定
-	if (CmdLineOptions.m_fMaximize)
-		MainWindow.SetMaximize(true);
 	{
 		int Left, Top, Width, Height;
 		MainWindow.GetPosition(&Left, &Top, &Width, &Height);
@@ -929,9 +927,6 @@ int CAppMain::Main(HINSTANCE hInstance, LPCTSTR pszCmdLine, int nCmdShow)
 			MessageBox(nullptr, TEXT("ウィンドウが作成できません。"), nullptr, MB_OK | MB_ICONSTOP);
 		return 0;
 	}
-
-	if (!CmdLineOptions.m_fStandby && !CmdLineOptions.m_fMinimize)
-		MainWindow.Show(nCmdShow);
 
 	GeneralOptions.Apply(COptions::UPDATE_ALL);
 
@@ -1145,8 +1140,15 @@ int CAppMain::Main(HINSTANCE hInstance, LPCTSTR pszCmdLine, int nCmdShow)
 		!CmdLineOptions.m_fStandby && !CmdLineOptions.m_fMinimize
 		&& !CmdLineOptions.m_fNoView && !CmdLineOptions.m_fNoDirectShow
 		&& !CmdLineOptions.m_fShowProgramGuide;
-	if (CmdLineOptions.m_fFullscreen || fStartInViewingMode)
-		UICore.SetFullscreen(true);
+	if (!CmdLineOptions.m_fStandby && !CmdLineOptions.m_fMinimize) {
+		if (!UICore.SetFullscreen(true)) {
+			AddLog(CLogItem::LogType::Error, TEXT("全画面ウィンドウが作成できません。"));
+			if (!Core.IsSilent())
+				MessageBox(nullptr, TEXT("全画面ウィンドウが作成できません。"), nullptr, MB_OK | MB_ICONSTOP);
+			return 0;
+		}
+		MainWindow.Show(SW_SHOWNOACTIVATE, true);
+	}
 
 	// 初期チャンネルを設定する
 	if (CoreEngine.IsSourceOpen()) {
@@ -1489,14 +1491,8 @@ bool CAppMain::ProcessCommandLine(LPCTSTR pszCmdLine)
 			&& !CmdLine.m_fProgramGuideOnly)
 		UICore.DoCommand(CM_SHOW);
 
-	if (MainWindow.GetVisible()) {
-		if (CmdLine.m_fFullscreen)
-			UICore.SetFullscreen(true);
-		else if (CmdLine.m_fMaximize)
-			MainWindow.SetMaximize(true);
-		else if (CmdLine.m_fMinimize)
-			::ShowWindow(MainWindow.GetHandle(), SW_MINIMIZE);
-	}
+	if (CmdLine.m_fMinimize && MainWindow.GetVisible())
+		::ShowWindow(MainWindow.GetHandle(), SW_MINIMIZE);
 
 	if (CmdLine.m_fSilent || CmdLine.m_TvRockDID >= 0)
 		Core.SetSilent(true);
@@ -1566,7 +1562,8 @@ void CAppMain::ShowProgramGuideByCommandLine(const CCommandLineOptions &CmdLine)
 
 	MainWindow.ShowProgramGuide(
 		true,
-		UICore.GetFullscreen() ? CMainWindow::ShowProgramGuideFlag::None : CMainWindow::ShowProgramGuideFlag::Popup,
+		UICore.GetFullscreen() && ::IsWindowVisible(MainWindow.GetVideoHostWindow()) ?
+			CMainWindow::ShowProgramGuideFlag::None : CMainWindow::ShowProgramGuideFlag::Popup,
 		&SpaceInfo);
 }
 

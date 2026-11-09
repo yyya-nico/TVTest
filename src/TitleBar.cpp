@@ -33,15 +33,11 @@ namespace TVTest
 namespace
 {
 
-constexpr int NUM_BUTTONS = 4;
-
 enum {
 	ICON_MINIMIZE,
 	ICON_MAXIMIZE,
-	ICON_FULLSCREEN,
-	ICON_CLOSE,
-	ICON_RESTORE,
-	ICON_FULLSCREENCLOSE
+	ICON_CLOSE = 3,
+	ICON_RESTORE
 };
 
 }
@@ -189,8 +185,10 @@ void CTitleBar::SetFullscreenMode(bool fFullscreen)
 {
 	if (m_fFullscreen != fFullscreen) {
 		m_fFullscreen = fFullscreen;
-		if (m_hwnd != nullptr)
-			UpdateItem(ITEM_FULLSCREEN);
+		if (m_hwnd != nullptr) {
+			UpdateTooltipsRect();
+			Invalidate();
+		}
 	}
 }
 
@@ -408,9 +406,6 @@ LRESULT CTitleBar::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					case ITEM_MAXIMIZE:
 						m_pEventHandler->OnMaximize();
 						break;
-					case ITEM_FULLSCREEN:
-						m_pEventHandler->OnFullscreen();
-						break;
 					case ITEM_CLOSE:
 						m_pEventHandler->OnClose();
 						break;
@@ -497,15 +492,12 @@ LRESULT CTitleBar::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				static const LPCTSTR pszToolTip[] = {
 					TEXT("最小化"),
 					TEXT("最大化"),
-					TEXT("全画面表示"),
 					TEXT("閉じる"),
 				};
 				LPNMTTDISPINFO pnmttdi = reinterpret_cast<LPNMTTDISPINFO>(lParam);
 
 				if (m_fMaximized && pnmttdi->hdr.idFrom == ITEM_MAXIMIZE)
 					StringCopy(pnmttdi->szText, TEXT("元のサイズに戻す"));
-				else if (m_fFullscreen && pnmttdi->hdr.idFrom == ITEM_FULLSCREEN)
-					StringCopy(pnmttdi->szText, TEXT("全画面表示解除"));
 				else
 					StringCopy(pnmttdi->szText, pszToolTip[pnmttdi->hdr.idFrom - ITEM_BUTTON_FIRST]);
 				pnmttdi->lpszText = pnmttdi->szText;
@@ -551,6 +543,10 @@ bool CTitleBar::GetItemRect(int Item, RECT *pRect) const
 {
 	if (m_hwnd == nullptr || Item < 0 || Item > ITEM_LAST)
 		return false;
+	if (m_fFullscreen && Item == ITEM_MAXIMIZE) {
+		::SetRectEmpty(pRect);
+		return true;
+	}
 
 	RECT rc;
 
@@ -560,7 +556,8 @@ bool CTitleBar::GetItemRect(int Item, RECT *pRect) const
 	Theme::SubtractBorderRect(Border, &rc);
 	Style::Subtract(&rc, m_Style.Padding);
 	const int ButtonWidth = GetButtonWidth();
-	int ButtonPos = rc.right - NUM_BUTTONS * ButtonWidth;
+	const int NumButtons = m_fFullscreen ? 2 : 3;
+	int ButtonPos = rc.right - NumButtons * ButtonWidth;
 	if (ButtonPos < 0)
 		ButtonPos = 0;
 	if (Item == ITEM_LABEL) {
@@ -569,7 +566,8 @@ bool CTitleBar::GetItemRect(int Item, RECT *pRect) const
 			rc.right = rc.left;
 	} else {
 		const int ButtonHeight = GetButtonHeight();
-		rc.left = ButtonPos + (Item - 1) * ButtonWidth;
+		const int ButtonIndex = m_fFullscreen && Item == ITEM_CLOSE ? 1 : Item - ITEM_BUTTON_FIRST;
+		rc.left = ButtonPos + ButtonIndex * ButtonWidth;
 		rc.right = rc.left + ButtonWidth;
 		rc.top += ((rc.bottom - rc.top) - ButtonHeight) / 2;
 		rc.bottom = rc.top + ButtonHeight;
@@ -689,8 +687,8 @@ void CTitleBar::Draw(HDC hdc, const RECT &PaintRect)
 					rc.top + m_Style.ButtonPadding.Top,
 					m_Style.ButtonIconSize.Width,
 					m_Style.ButtonIconSize.Height,
-					(i == ITEM_MAXIMIZE && m_fMaximized) ? ICON_RESTORE :
-					((i == ITEM_FULLSCREEN && m_fFullscreen) ? ICON_FULLSCREENCLOSE : i - 1),
+					i == ITEM_CLOSE ? ICON_CLOSE :
+					i == ITEM_MAXIMIZE && m_fMaximized ? ICON_RESTORE : i - ITEM_BUTTON_FIRST,
 					Style.Fore.Fill.GetSolidColor());
 			}
 		}
@@ -703,6 +701,17 @@ void CTitleBar::Draw(HDC hdc, const RECT &PaintRect)
 	::SetTextColor(hdc, crOldTextColor);
 	::SetBkMode(hdc, OldBkMode);
 	::SelectObject(hdc, hfontOld);
+}
+
+
+void CTitleBar::DrawCloseIcon(HDC hdc, const RECT &Rect, COLORREF Color)
+{
+	m_ButtonIcons.Draw(
+		hdc,
+		Rect.left + (Rect.right - Rect.left - m_Style.ButtonIconSize.Width) / 2,
+		Rect.top + (Rect.bottom - Rect.top - m_Style.ButtonIconSize.Height) / 2,
+		m_Style.ButtonIconSize.Width, m_Style.ButtonIconSize.Height,
+		ICON_CLOSE, Color);
 }
 
 

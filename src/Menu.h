@@ -50,18 +50,18 @@ namespace TVTest
 		enum {
 			SUBMENU_ZOOM           = -1,
 			SUBMENU_ASPECTRATIO    = -2,
-			SUBMENU_CHANNEL        = 2,
-			SUBMENU_SERVICE        = 3,
-			SUBMENU_SPACE          = 4,
-			SUBMENU_FAVORITES      = 5,
-			SUBMENU_CHANNELHISTORY = 6,
-			SUBMENU_VOLUME         = 9,
-			SUBMENU_AUDIO          = 10,
-			SUBMENU_VIDEO          = 11,
-			SUBMENU_RESET          = 21,
+			SUBMENU_CHANNEL        = 0,
+			SUBMENU_SERVICE        = 1,
+			SUBMENU_SPACE          = 2,
+			SUBMENU_FAVORITES      = 3,
+			SUBMENU_CHANNELHISTORY = 4,
+			SUBMENU_VOLUME         = 7,
+			SUBMENU_AUDIO          = 8,
+			SUBMENU_VIDEO          = 9,
+			SUBMENU_RESET          = 19,
 			SUBMENU_BAR            = -3,
-			SUBMENU_PLUGIN         = 25,
-			SUBMENU_FILTERPROPERTY = 27
+			SUBMENU_PLUGIN         = 23,
+			SUBMENU_FILTERPROPERTY = 25
 		};
 
 		CMainMenu() = default;

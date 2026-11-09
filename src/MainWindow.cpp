@@ -139,7 +139,8 @@ bool CMainWindow::Create(HWND hwndParent, DWORD Style, DWORD ExStyle, int ID)
 	m_pThis = this;
 	if (!CreateBasicWindow(nullptr, Style, ExStyle, ID, MAIN_WINDOW_CLASS, MAIN_TITLE_TEXT, m_App.GetInstance()))
 		return false;
-	return true;
+	// Keep the taskbar and message window without displaying a second viewing window.
+	return SetOpacity(0);
 }
 
 
@@ -293,24 +294,12 @@ bool CMainWindow::FinalizeViewer()
 
 bool CMainWindow::SetFullscreen(bool fFullscreen)
 {
-	if (fFullscreen) {
-		if (::IsIconic(m_hwnd))
-			::ShowWindow(m_hwnd, SW_RESTORE);
-		if (!m_Fullscreen.Create(m_hwnd, &m_Display))
-			return false;
-	} else {
-		ForegroundWindow(m_hwnd);
-		m_Fullscreen.SendMessage(WM_CLOSE, 0, 0);
-		LibISDB::ViewerFilter *pViewer = m_App.CoreEngine.GetFilter<LibISDB::ViewerFilter>();
-		if (pViewer != nullptr) {
-			pViewer->SetViewStretchMode(m_App.VideoOptions.GetStretchMode());
-		}
-	}
+	if (!fFullscreen || !m_Fullscreen.Create(m_hwnd, &m_Display))
+		return false;
+
 	m_App.StatusView.UpdateItem(STATUS_ITEM_VIDEOSIZE);
 	m_App.Panel.ControlPanel.UpdateItem(CONTROLPANEL_ITEM_VIDEO);
-	m_pCore->SetCommandCheckedState(CM_FULLSCREEN, fFullscreen);
-	m_pCore->SetCommandCheckedState(
-		CM_PANEL, fFullscreen ? m_Fullscreen.IsPanelVisible() : m_App.Panel.fShowPanelWindow);
+	m_pCore->SetCommandCheckedState(CM_PANEL, m_Fullscreen.IsPanelVisible());
 	return true;
 }
 
@@ -2353,12 +2342,7 @@ bool CMainWindow::HandleCommand(CCommandManager::InvokeParameters &Params)
 		return true;
 
 	case CM_SHOW:
-		if (m_pCore->GetStandby()) {
-			m_pCore->SetStandby(false);
-		} else {
-			SetWindowVisible();
-		}
-		return true;
+		return m_pCore->GetStandby() ? m_pCore->SetStandby(false) : SetWindowVisible();
 
 	case CM_MENU:
 		{
@@ -2389,10 +2373,6 @@ bool CMainWindow::HandleCommand(CCommandManager::InvokeParameters &Params)
 
 	case CM_MINIMIZE:
 		::ShowWindow(m_hwnd, ::IsIconic(m_hwnd) ? SW_RESTORE : SW_MINIMIZE);
-		return true;
-
-	case CM_MAXIMIZE:
-		::ShowWindow(m_hwnd, ::IsZoomed(m_hwnd) ? SW_RESTORE : SW_MAXIMIZE);
 		return true;
 
 	case CM_HOMEDISPLAY:
@@ -2528,23 +2508,6 @@ bool CMainWindow::HandleCommand(CCommandManager::InvokeParameters &Params)
 		}
 		return true;
 
-	default:
-		if ((Params.ID >= CM_ZOOM_FIRST && Params.ID <= CM_ZOOM_LAST)
-				|| (Params.ID >= CM_CUSTOMZOOM_FIRST && Params.ID <= CM_CUSTOMZOOM_LAST)) {
-			CZoomOptions::ZoomInfo Info;
-
-			if (m_pCore->GetFullscreen())
-				m_pCore->SetFullscreen(false);
-			if (::IsZoomed(m_hwnd))
-				::ShowWindow(m_hwnd, SW_RESTORE);
-			if (m_App.ZoomOptions.GetZoomInfoByCommand(Params.ID, &Info)) {
-				if (Info.Type == CZoomOptions::ZoomType::Rate)
-					SetZoomRate(Info.Rate.Rate, Info.Rate.Factor);
-				else if (Info.Type == CZoomOptions::ZoomType::Size)
-					AdjustWindowSize(Info.Size.Width, Info.Size.Height);
-			}
-			return true;
-		}
 	}
 
 	return false;
@@ -2574,12 +2537,13 @@ bool CMainWindow::OnSysCommand(UINT Command)
 		}
 		return true;
 
-	case SC_MINIMIZE:
+	case SC_SIZE:
+	case SC_MOVE:
 	case SC_MAXIMIZE:
+		return true;
+
 	case SC_RESTORE:
-		if (m_pCore->GetFullscreen())
-			m_pCore->SetFullscreen(false);
-		break;
+		return !::IsIconic(m_hwnd);
 
 	case SC_CLOSE:
 		SendCommand(CM_CLOSE);
@@ -4566,7 +4530,7 @@ bool CMainWindow::ShowProgramGuide(bool fShow, ShowProgramGuideFlag Flags, const
 			!(Flags & ShowProgramGuideFlag::Popup)
 			&& (!!(Flags & ShowProgramGuideFlag::OnScreen)
 				|| m_App.ProgramGuideOptions.GetOnScreen()
-				|| (m_pCore->GetFullscreen() && ::GetSystemMetrics(SM_CMONITORS) == 1));
+				|| (m_Fullscreen.GetVisible() && ::GetSystemMetrics(SM_CMONITORS) == 1));
 
 		Util::CWaitCursor WaitCursor;
 
@@ -4911,9 +4875,9 @@ void CMainWindow::UpdateCaptionStyle()
 }
 
 
-void CMainWindow::SetWindowVisible()
+bool CMainWindow::SetWindowVisible()
 {
-	bool fRestore = false, fShow = false;
+	bool fRestore = false;
 
 	if (!!(m_App.TaskTrayManager.GetStatus() & CTaskTrayManager::StatusFlag::Minimized)) {
 		m_App.TaskTrayManager.SetStatus(
@@ -4923,45 +4887,28 @@ void CMainWindow::SetWindowVisible()
 		fRestore = true;
 	}
 	if (!GetVisible()) {
-		if (m_fMinimizeInit || m_fStandbyInit) {
-			UpdateCaptionStyle();
-			Show(SW_SHOWNORMAL);
-			if (m_fMinimizeInit)
-				fRestore = true;
-		} else {
-			SetVisible(true);
-		}
-		ForegroundWindow(m_hwnd);
-		Update();
-		fShow = true;
+		Show(SW_SHOWNOACTIVATE, true);
+		if (m_fMinimizeInit)
+			fRestore = true;
 	}
 	if (::IsIconic(m_hwnd)) {
 		::ShowWindow(m_hwnd, SW_RESTORE);
-
-		/*
-			Windows 11 で、プログラム開始時にシステムトレイに入れるようにした場合、
-			ウィンドウ枠を細くしているとウィンドウの左上と右上のみ角が小さく丸められる謎現象が起こる。
-			一度枠の幅を0にしてから本来の幅に戻せば直るので、とりあえずそれで対応している。
-		*/
-		if (m_fMinimizeInit && m_fCustomFrame && m_CustomFrameWidth != 0
-				&& Util::OS::IsWindows11OrLater()) {
-			SetCustomFrame(true, 0);
-			SetCustomFrame(true, m_ThinFrameWidth);
-		}
-
-		Update();
 		fRestore = true;
-	} else if (!fShow) {
-		ForegroundWindow(m_hwnd);
 	}
+	if (!m_pCore->SetFullscreen(true))
+		return false;
+	if (!m_Fullscreen.GetVisible())
+		m_Fullscreen.SetVisible(true);
 	if (m_fMinimizeInit) {
 		// 最小化状態での起動後最初の表示
 		ShowFloatingWindows(true);
 		m_fMinimizeInit = false;
 	}
+	ForegroundWindow(m_Fullscreen.GetHandle());
 	if (fRestore) {
 		ResumeViewer(ResumeInfo::ViewerSuspendFlag::Minimize);
 	}
+	return true;
 }
 
 
@@ -5017,9 +4964,7 @@ bool CMainWindow::SetStandby(bool fStandby)
 		m_App.AddLog(TEXT("待機状態に移行します。"));
 		SuspendViewer(ResumeInfo::ViewerSuspendFlag::Standby);
 		//FinalizeViewer();
-		m_Resume.fFullscreen = m_pCore->GetFullscreen();
-		if (m_Resume.fFullscreen)
-			m_pCore->SetFullscreen(false);
+		m_Fullscreen.SetVisible(false);
 		ShowFloatingWindows(false, m_App.GeneralOptions.GetStandaloneProgramGuide());
 		SetVisible(false);
 
@@ -5042,7 +4987,8 @@ bool CMainWindow::SetStandby(bool fStandby)
 		}
 	} else {
 		m_App.AddLog(TEXT("待機状態から復帰します。"));
-		SetWindowVisible();
+		if (!SetWindowVisible())
+			return false;
 		Util::CWaitCursor WaitCursor;
 		if (m_fStandbyInit) {
 			const bool fSetChannel = m_Resume.fSetChannel;
@@ -5053,10 +4999,8 @@ bool CMainWindow::SetStandby(bool fStandby)
 			InitializeViewer();
 			m_fStandbyInit = false;
 		}
-		if (m_Resume.fFullscreen)
-			m_pCore->SetFullscreen(true);
 		ShowFloatingWindows(true);
-		ForegroundWindow(m_hwnd);
+		ForegroundWindow(m_Fullscreen.GetHandle());
 		ResumeTuner();
 		ResumeViewer(ResumeInfo::ViewerSuspendFlag::Standby);
 	}
@@ -5082,8 +5026,6 @@ bool CMainWindow::InitStandby()
 		m_Resume.fEnableViewer = true;
 		m_Resume.ViewerSuspendFlags = ResumeInfo::ViewerSuspendFlag::Standby;
 	}
-	m_Resume.fFullscreen = m_App.CmdLineOptions.m_fFullscreen;
-
 	if (m_App.CoreEngine.IsDriverSpecified())
 		m_Resume.fOpenTuner = true;
 
@@ -5544,17 +5486,26 @@ LRESULT CMainWindow::CFullscreen::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam,
 		if (const HWND hwndClose = ::GetDlgItem(hwnd, CM_CLOSE)) {
 			const int StatusBarHeight = m_pStyleScaling->LogicalPixelsToPhysicalPixels(62);
 			const int Margin = m_pStyleScaling->LogicalPixelsToPhysicalPixels(32);
-			const int Width = m_pStyleScaling->LogicalPixelsToPhysicalPixels(72);
-			const int Height = m_pStyleScaling->LogicalPixelsToPhysicalPixels(32);
+			const int Size = m_pStyleScaling->LogicalPixelsToPhysicalPixels(32);
 			::SetWindowPos(
-				hwndClose, HWND_TOP, LOWORD(lParam) - Width - Margin, Margin + StatusBarHeight,
-				Width, Height, SWP_NOACTIVATE);
+				hwndClose, HWND_TOP, LOWORD(lParam) - Size - Margin, Margin + StatusBarHeight,
+				Size, Size, SWP_NOACTIVATE);
 		}
 		return 0;
 
-	case WM_SETTINGCHANGE:
-	case WM_THEMECHANGED:
-		UpdateCloseButtonTheme();
+	case WM_DISPLAYCHANGE:
+		{
+			MONITORINFO MonitorInfo = {sizeof(MonitorInfo)};
+			if (::GetMonitorInfo(::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &MonitorInfo))
+				SetPosition(&MonitorInfo.rcMonitor);
+		}
+		return 0;
+
+	case WM_DRAWITEM:
+		if (wParam == CM_CLOSE) {
+			DrawCloseButton(*reinterpret_cast<const DRAWITEMSTRUCT*>(lParam));
+			return TRUE;
+		}
 		break;
 
 	case WM_LBUTTONUP:
@@ -5630,16 +5581,20 @@ LRESULT CMainWindow::CFullscreen::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam,
 			break;
 		[[fallthrough]];
 	case WM_KEYDOWN:
-		if (wParam == VK_ESCAPE) {
-			m_App.UICore.SetFullscreen(false);
-			return 0;
-		}
-		[[fallthrough]];
 	case WM_COMMAND:
 		return m_MainWindow.SendMessage(uMsg, wParam, lParam);
 
 	case WM_SYSCOMMAND:
 		switch (wParam & 0xFFFFFFF0) {
+		case SC_MINIMIZE:
+			return m_MainWindow.SendMessage(uMsg, wParam, lParam);
+
+		case SC_SIZE:
+		case SC_MOVE:
+		case SC_MAXIMIZE:
+		case SC_RESTORE:
+			return 0;
+
 		case SC_MONITORPOWER:
 			if (m_App.GeneralOptions.GetNoMonitorLowPower()
 					&& m_App.UICore.IsViewerEnabled())
@@ -5689,8 +5644,8 @@ LRESULT CMainWindow::CFullscreen::OnMessage(HWND hwnd, UINT uMsg, WPARAM wParam,
 		break;
 
 	case WM_CLOSE:
-		m_fShowEventInfoOSD = m_App.OSDManager.IsEventInfoOSDVisible();
-		break;
+		m_MainWindow.PostCommand(CM_CLOSE);
+		return 0;
 
 	case WM_DESTROY:
 		m_pDisplay->GetVideoContainer().SetParent(&m_pDisplay->GetViewWindow());
@@ -5771,13 +5726,6 @@ bool CMainWindow::CFullscreen::Create(HWND hwndOwner, CMainDisplay *pDisplay)
 		Width = ::GetSystemMetrics(SM_CXSCREEN);
 		Height = ::GetSystemMetrics(SM_CYSCREEN);
 	}
-#ifdef _DEBUG
-	// デバッグし易いように小さく表示
-	if (::GetKeyState(VK_SHIFT) < 0) {
-		Width /= 2;
-		Height /= 2;
-	}
-#endif
 	SetPosition(x, y, Width, Height);
 
 	m_pDisplay = pDisplay;
@@ -5852,12 +5800,10 @@ bool CMainWindow::CFullscreen::OnCreate()
 	m_MainWindow.m_TSProcessorNotification.SetHost(m_ViewWindow.GetHandle());
 
 	const HWND hwndClose = ::CreateWindowEx(
-		0, TEXT("BUTTON"), TEXT("閉じる"), WS_CHILD | WS_CLIPSIBLINGS | BS_PUSHBUTTON,
+		0, TEXT("BUTTON"), TEXT("閉じる"), WS_CHILD | WS_CLIPSIBLINGS | BS_OWNERDRAW,
 		0, 0, 0, 0, m_hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(CM_CLOSE)),
 		m_App.GetInstance(), nullptr);
 	if (hwndClose != nullptr) {
-		::SendMessage(hwndClose, WM_SETFONT, reinterpret_cast<WPARAM>(::GetStockObject(DEFAULT_GUI_FONT)), FALSE);
-		UpdateCloseButtonTheme();
 		const CDisplayBase &DisplayBase = m_pDisplay->GetDisplayBase();
 		ShowCloseButton(DisplayBase.IsVisible() && DisplayBase.GetDisplayView() == &m_App.ChannelDisplay);
 	}
@@ -5894,12 +5840,21 @@ void CMainWindow::CFullscreen::ShowCloseButton(bool fShow)
 }
 
 
-void CMainWindow::CFullscreen::UpdateCloseButtonTheme()
+void CMainWindow::CFullscreen::DrawCloseButton(const DRAWITEMSTRUCT &Item)
 {
-	if (const HWND hwndClose = ::GetDlgItem(m_hwnd, CM_CLOSE)) {
-		const bool fAllowDark = GetStyleManager()->IsDarkDialog();
-		SetWindowAllowDarkMode(hwndClose, fAllowDark);
-		SetWindowDarkTheme(hwndClose, fAllowDark && TVTest::IsDarkMode());
+	CTitleBar::TitleBarTheme Theme;
+	m_MainWindow.GetTitleBar().GetTitleBarTheme(&Theme);
+	const auto &Style =
+		(Item.itemState & (ODS_SELECTED | ODS_HOTLIGHT)) != 0 ? Theme.HighlightIconStyle : Theme.IconStyle;
+	auto ThemeDraw = BeginThemeDraw(Item.hDC);
+	ThemeDraw.Draw(Theme.CaptionStyle.Back, Item.rcItem);
+	if (Style.Back.Border.Type != Theme::BorderType::None || Style.Back.Fill != Theme.CaptionStyle.Back.Fill)
+		ThemeDraw.Draw(Style.Back, Item.rcItem);
+	m_TitleBar.DrawCloseIcon(Item.hDC, Item.rcItem, Style.Fore.Fill.GetSolidColor());
+	if ((Item.itemState & (ODS_FOCUS | ODS_NOFOCUSRECT)) == ODS_FOCUS) {
+		RECT rc = Item.rcItem;
+		::InflateRect(&rc, -2, -2);
+		::DrawFocusRect(Item.hDC, &rc);
 	}
 }
 
@@ -6071,6 +6026,8 @@ void CMainWindow::CFullscreen::HideAllBars()
 void CMainWindow::CFullscreen::SetTheme(const Theme::CThemeManager *pThemeManager)
 {
 	m_LayoutBase.SetBackColor(pThemeManager->GetColor(CColorScheme::COLOR_SPLITTER));
+	if (const HWND hwndClose = ::GetDlgItem(m_hwnd, CM_CLOSE))
+		::InvalidateRect(hwndClose, nullptr, FALSE);
 }
 
 
@@ -6364,12 +6321,6 @@ bool CMainWindow::CTitleBarManager::OnMaximize()
 	return true;
 }
 
-bool CMainWindow::CTitleBarManager::OnFullscreen()
-{
-	m_pMainWindow->m_pCore->ToggleFullscreen();
-	return true;
-}
-
 void CMainWindow::CTitleBarManager::OnMouseLeave()
 {
 	if (!m_fFixed)
@@ -6392,8 +6343,6 @@ void CMainWindow::CTitleBarManager::OnLabelLButtonDoubleClick(int x, int y)
 	m_fFixed = false;
 	if (m_fMainWindow)
 		OnMaximize();
-	else
-		OnFullscreen();
 }
 
 void CMainWindow::CTitleBarManager::OnLabelRButtonUp(int x, int y)

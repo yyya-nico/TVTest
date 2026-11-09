@@ -103,7 +103,6 @@ namespace TVTest
 			bool fSetChannel = false;
 			bool fEnableViewer = false;
 			ViewerSuspendFlag ViewerSuspendFlags = ViewerSuspendFlag::None;
-			bool fFullscreen = false;
 		};
 
 		CMainWindow(CAppMain &App);
@@ -266,7 +265,6 @@ namespace TVTest
 			bool OnClose() override;
 			bool OnMinimize() override;
 			bool OnMaximize() override;
-			bool OnFullscreen() override;
 			void OnMouseLeave() override;
 			void OnLabelLButtonDown(int x, int y) override;
 			void OnLabelLButtonDoubleClick(int x, int y) override;
@@ -401,7 +399,7 @@ namespace TVTest
 			bool m_fShowEventInfoOSD = false;
 
 			bool OnCreate();
-			void UpdateCloseButtonTheme();
+			void DrawCloseButton(const DRAWITEMSTRUCT &Item);
 			void OnMouseCommand(int Command);
 			void OnLButtonDoubleClick();
 			void ShowCursor(bool fShow);
@@ -730,7 +728,7 @@ namespace TVTest
 		void ShowPopupStatusBar(bool fShow);
 		void ShowPopupSideBar(bool fShow);
 		void ShowCursor(bool fShow);
-		void SetWindowVisible();
+		bool SetWindowVisible();
 		void ShowFloatingWindows(bool fShow, bool fNoProgramGuide = false);
 		void DrawCustomFrame(bool fActive);
 		CViewWindow &GetCurrentViewWindow();

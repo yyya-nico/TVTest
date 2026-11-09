@@ -57,7 +57,6 @@ namespace TVTest
 			virtual bool OnClose() { return false; }
 			virtual bool OnMinimize() { return false; }
 			virtual bool OnMaximize() { return false; }
-			virtual bool OnFullscreen() { return false; }
 			virtual void OnMouseLeave() {}
 			virtual void OnLabelLButtonDown(int x, int y) {}
 			virtual void OnLabelLButtonDoubleClick(int x, int y) {}
@@ -99,13 +98,13 @@ namespace TVTest
 		void SetIcon(HICON hIcon);
 		SIZE GetIconDrawSize() const;
 		bool IsIconDrawSmall() const;
+		void DrawCloseIcon(HDC hdc, const RECT &Rect, COLORREF Color);
 
 	private:
 		enum {
 			ITEM_LABEL,
 			ITEM_MINIMIZE,
 			ITEM_MAXIMIZE,
-			ITEM_FULLSCREEN,
 			ITEM_CLOSE,
 			ITEM_BUTTON_FIRST = ITEM_MINIMIZE,
 			ITEM_LAST = ITEM_CLOSE

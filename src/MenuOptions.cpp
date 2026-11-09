@@ -43,8 +43,6 @@ constexpr int ITEM_STATE_VISIBLE = 0x0001;
 
 const CMenuOptions::MenuInfo CMenuOptions::m_DefaultMenuItemList[] =
 {
-	{CM_FULLSCREEN,                     CM_FULLSCREEN,           CM_FULLSCREEN},
-	{MENU_ID_SEPARATOR,                 0,                       0},
 	{CMainMenu::SUBMENU_CHANNEL,        IDS_MENU_CHANNEL,        CM_CHANNELMENU},
 	{CMainMenu::SUBMENU_SERVICE,        IDS_MENU_SERVICE,        CM_SERVICEMENU},
 	{CMainMenu::SUBMENU_SPACE,          IDS_MENU_TUNER,          CM_TUNINGSPACEMENU},

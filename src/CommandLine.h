@@ -73,9 +73,7 @@ namespace TVTest
 		bool m_fExitOnRecordEnd = false;
 		bool m_fRecordOnly = false;
 
-		bool m_fFullscreen = false;
 		bool m_fMinimize = false;
-		bool m_fMaximize = false;
 		bool m_fTray = false;
 		static constexpr int INVALID_WINDOW_POS = INT_MIN;
 		int m_WindowLeft = INVALID_WINDOW_POS;

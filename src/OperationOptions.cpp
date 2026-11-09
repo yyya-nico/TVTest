@@ -36,7 +36,7 @@ COperationOptions::COperationOptions()
 	, m_WheelShiftCommand(CM_WHEEL_CHANNEL)
 	, m_WheelCtrlCommand(CM_WHEEL_AUDIO)
 	, m_WheelTiltCommand(0)
-	, m_LeftDoubleClickCommand(CM_FULLSCREEN)
+	, m_LeftDoubleClickCommand(0)
 	, m_RightClickCommand(CM_MENU)
 	, m_MiddleClickCommand(0)
 {

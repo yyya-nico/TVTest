@@ -90,7 +90,6 @@ void CAppCommand::RegisterDefaultCommands()
 			},
 			{CM_PANANDSCANOPTIONS, TEXT("PanAndScanOptions"), CCommandManager::BindHandler(&CAppCommand::PanAndScanOptions, this)},
 			{CM_FRAMECUT, TEXT("FrameCut"), CCommandManager::BindHandler(&CAppCommand::ToggleFrameCut, this)},
-			{CM_FULLSCREEN, TEXT("Fullscreen"), CCommandManager::BindHandler(&CAppCommand::ToggleFullscreen, this)},
 			{CM_ALWAYSONTOP, TEXT("AlwaysOnTop"), CCommandManager::BindHandler(&CAppCommand::ToggleAlwaysOnTop, this)},
 			{CM_VOLUME_UP, TEXT("VolumeUp"), CCommandManager::BindHandler(&CAppCommand::VolumeUpDown, this)},
 			{CM_VOLUME_DOWN, TEXT("VolumeDown"), CCommandManager::BindHandler(&CAppCommand::VolumeUpDown, this)},
@@ -237,7 +236,6 @@ void CAppCommand::RegisterDefaultCommands()
 
 			{CM_ACTIVATE, TEXT("Activate"), MainWindowHandler},
 			{CM_MINIMIZE, TEXT("Minimize"), MainWindowHandler},
-			{CM_MAXIMIZE, TEXT("Maximize"), MainWindowHandler},
 
 			{CM_1SEGMODE, TEXT("OneSegMode"), CCommandManager::BindHandler(&CAppCommand::ToggleOneSegMode, this)},
 			{CM_CLOSETUNER, TEXT("CloseTuner"), CCommandManager::BindHandler(&CAppCommand::CloseTuner, this)},
@@ -604,14 +602,6 @@ bool CAppCommand::ToggleFrameCut(CCommandManager::InvokeParameters &Params)
 
 	m_App.UICore.SetCommandCheckedState(
 		CM_FRAMECUT, Mode == LibISDB::ViewerFilter::ViewStretchMode::Crop);
-
-	return true;
-}
-
-
-bool CAppCommand::ToggleFullscreen(CCommandManager::InvokeParameters &Params)
-{
-	m_App.UICore.ToggleFullscreen();
 
 	return true;
 }

@@ -146,7 +146,6 @@ namespace TVTest
 		bool SetResident(bool fResident);
 		bool GetFullscreen() const { return m_fFullscreen; }
 		bool SetFullscreen(bool fFullscreen);
-		bool ToggleFullscreen();
 		bool GetAlwaysOnTop() const { return m_fAlwaysOnTop; }
 		bool SetAlwaysOnTop(bool fTop);
 		bool PreventDisplaySave(bool fPrevent);

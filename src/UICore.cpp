@@ -847,6 +847,9 @@ bool CUICore::SetResident(bool fResident)
 
 bool CUICore::SetFullscreen(bool fFullscreen)
 {
+	if (!fFullscreen)
+		return false;
+
 	if (m_fFullscreen != fFullscreen) {
 		if (m_pSkin == nullptr)
 			return false;
@@ -857,12 +860,6 @@ bool CUICore::SetFullscreen(bool fFullscreen)
 		m_App.AppEventManager.OnFullscreenChanged(fFullscreen);
 	}
 	return true;
-}
-
-
-bool CUICore::ToggleFullscreen()
-{
-	return SetFullscreen(!m_fFullscreen);
 }
 
 
