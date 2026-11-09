@@ -5804,6 +5804,7 @@ bool CMainWindow::CFullscreen::OnCreate()
 		0, 0, 0, 0, m_hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(CM_CLOSE)),
 		m_App.GetInstance(), nullptr);
 	if (hwndClose != nullptr) {
+		::SetWindowSubclass(hwndClose, CloseButtonSubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
 		const CDisplayBase &DisplayBase = m_pDisplay->GetDisplayBase();
 		ShowCloseButton(DisplayBase.IsVisible() && DisplayBase.GetDisplayView() == &m_App.ChannelDisplay);
 	}
@@ -5834,9 +5835,57 @@ void CMainWindow::CFullscreen::ShowCloseButton(bool fShow)
 {
 	if (const HWND hwndClose = ::GetDlgItem(m_hwnd, CM_CLOSE)) {
 		::ShowWindow(hwndClose, fShow ? SW_SHOWNA : SW_HIDE);
-		if (fShow)
+		if (fShow) {
 			::BringWindowToTop(hwndClose);
+			POINT CursorPos;
+			SetCloseButtonHot(hwndClose, ::GetCursorPos(&CursorPos) && ::WindowFromPoint(CursorPos) == hwndClose);
+		} else {
+			SetCloseButtonHot(hwndClose, false);
+		}
 	}
+}
+
+
+LRESULT CALLBACK CMainWindow::CFullscreen::CloseButtonSubclassProc(
+	HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
+	UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+{
+	auto *pThis = reinterpret_cast<CFullscreen*>(dwRefData);
+
+	switch (uMsg) {
+	case WM_MOUSEMOVE:
+		{
+			RECT rc;
+			::GetClientRect(hwnd, &rc);
+			const POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+			pThis->SetCloseButtonHot(hwnd, ::PtInRect(&rc, pt) != FALSE);
+		}
+		break;
+
+	case WM_MOUSELEAVE:
+		pThis->SetCloseButtonHot(hwnd, false);
+		break;
+
+	case WM_NCDESTROY:
+		pThis->m_fCloseButtonHot = false;
+		::RemoveWindowSubclass(hwnd, CloseButtonSubclassProc, uIdSubclass);
+		break;
+	}
+	return ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
+}
+
+
+void CMainWindow::CFullscreen::SetCloseButtonHot(HWND hwnd, bool fHot)
+{
+	if (m_fCloseButtonHot == fHot)
+		return;
+
+	if (fHot) {
+		TRACKMOUSEEVENT Track = {sizeof(Track), TME_LEAVE, hwnd, 0};
+		::TrackMouseEvent(&Track);
+	}
+	m_fCloseButtonHot = fHot;
+	::InvalidateRect(hwnd, nullptr, FALSE);
 }
 
 
@@ -5845,7 +5894,7 @@ void CMainWindow::CFullscreen::DrawCloseButton(const DRAWITEMSTRUCT &Item)
 	CTitleBar::TitleBarTheme Theme;
 	m_MainWindow.GetTitleBar().GetTitleBarTheme(&Theme);
 	const auto &Style =
-		(Item.itemState & (ODS_SELECTED | ODS_HOTLIGHT)) != 0 ? Theme.HighlightIconStyle : Theme.IconStyle;
+		m_fCloseButtonHot || (Item.itemState & ODS_SELECTED) != 0 ? Theme.HighlightIconStyle : Theme.IconStyle;
 	auto ThemeDraw = BeginThemeDraw(Item.hDC);
 	ThemeDraw.Draw(Theme.CaptionStyle.Back, Item.rcItem);
 	if (Style.Back.Border.Type != Theme::BorderType::None || Style.Back.Fill != Theme.CaptionStyle.Back.Fill)

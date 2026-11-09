@@ -397,8 +397,13 @@ namespace TVTest
 			int m_PanelHeight = -1;
 			CCursorTracker m_CursorTracker;
 			bool m_fShowEventInfoOSD = false;
+			bool m_fCloseButtonHot = false;
 
 			bool OnCreate();
+			static LRESULT CALLBACK CloseButtonSubclassProc(
+				HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
+				UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
+			void SetCloseButtonHot(HWND hwnd, bool fHot);
 			void DrawCloseButton(const DRAWITEMSTRUCT &Item);
 			void OnMouseCommand(int Command);
 			void OnLButtonDoubleClick();
